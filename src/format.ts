@@ -10,8 +10,22 @@ const SYMBOL: Record<Currency, string> = {
   GBP: '£',
 }
 
-const WEEKDAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT']
-const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']
+let locale = 'en-GB'
+
+export function applyFormatLocale(language: string | null | undefined): void {
+  if (!language) return
+  const tag = language.replace('_', '-')
+  try {
+    new Intl.NumberFormat(tag).format(1)
+    locale = tag
+  } catch {
+    locale = 'en-GB'
+  }
+}
+
+export function formatLocale(): string {
+  return locale
+}
 
 export function isCurrency(value: unknown): value is Currency {
   return typeof value === 'string' && (CURRENCIES as readonly string[]).includes(value)
@@ -22,7 +36,7 @@ export function symbol(currency: Currency): string {
 }
 
 export function formatPlain(amount: number): string {
-  return Math.round(amount).toLocaleString('en-GB')
+  return Math.round(amount).toLocaleString(locale)
 }
 
 export function formatMoney(amount: number, currency: Currency): string {
@@ -55,16 +69,22 @@ export function daysBetween(from: Date, to: Date): number {
   return Math.round((startOfDay(to).getTime() - startOfDay(from).getTime()) / 86400000)
 }
 
+function tidy(value: string): string {
+  return value.replace(/[,.]/g, '').replace(/\s+/g, ' ').trim().toUpperCase()
+}
+
 export function formatDay(date: Date): string {
-  return `${WEEKDAYS[date.getDay()]} ${date.getDate()} ${MONTHS[date.getMonth()]}`
+  return tidy(new Intl.DateTimeFormat(locale, { weekday: 'short', day: 'numeric', month: 'short' }).format(date))
 }
 
 export function formatMonth(date: Date): string {
-  return `${MONTHS[date.getMonth()]} ${date.getFullYear()}`
+  return tidy(new Intl.DateTimeFormat(locale, { month: 'short', year: 'numeric' }).format(date))
 }
 
 export function formatShort(date: Date): string {
-  return `${date.getDate()}\u00A0${MONTHS[date.getMonth()]}`
+  const day = new Intl.DateTimeFormat(locale, { day: 'numeric' }).format(date)
+  const month = tidy(new Intl.DateTimeFormat(locale, { month: 'short' }).format(date))
+  return `${day}\u00A0${month}`
 }
 
 export function pad2(value: number): string {

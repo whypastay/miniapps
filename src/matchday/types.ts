@@ -43,6 +43,7 @@ export interface MatchdaySettings {
 }
 
 export interface MatchdaySnapshot {
+  connected: boolean
   gameweek: Gameweek
   fixtures: Fixture[]
   picks: Pick[]

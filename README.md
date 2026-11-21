@@ -37,7 +37,9 @@ npm run preview
 - History of marks, and a progress card drawn to a canvas.
 - Settings: rule, currency, start date, reset.
 
-State is stored per user in `Telegram.WebApp.CloudStorage` when the page is opened inside Telegram, and in `localStorage` otherwise (and as a cache). The first visit opens on a demo ledger: classic ×10 EUR, week 31, €4,480 of €13,780.
+State is stored per user in `Telegram.WebApp.CloudStorage` when the page is opened inside Telegram, and in `localStorage` otherwise. If CloudStorage is missing or rejects the write, the ledger stays on the device or in memory and the screen still opens. The first visit is a short setup — rule, currency, start date — then an empty week 1. Add `?demo=1` to open the sample ledger (classic ×10 EUR, week 31, €4,480 of €13,780). Secret Santa and Matchday do the same: a waiting state until the bot connects, and the sample room only with `?demo=1`.
+
+Close calls `Telegram.WebApp.close()`. When a Telegram user is present, the header greets them by `first_name`. `language_code` formats numbers and dates. The labels stay English.
 
 ### Sharing the card
 
@@ -46,6 +48,8 @@ Share tries, in order:
 1. `Telegram.WebApp.shareMessage`, when the page is opened with `?shareMsg=<id>` from a message the bot prepared with `savePreparedInlineMessage`.
 2. The system share sheet, when the browser can share the PNG.
 3. A download of `budget-better.png`.
+
+Share with a friend opens `https://t.me/share/url` for `https://t.me/BBChallenge_bot` with a short English line. Inside Telegram that uses `openTelegramLink`.
 
 Download is always available as its own control.
 

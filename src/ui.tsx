@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
 import type { ComponentChildren } from 'preact'
-import { cls } from './format.ts'
+import { applyFormatLocale, cls } from './format.ts'
 import { themeBlock, themes, type ThemeId } from './theme.ts'
-import { bindBackButton, bootTelegram, closeOrLeave, haptic, nativeChromeVisible } from './telegram.ts'
+import { bindBackButton, bootTelegram, closeOrLeave, haptic, nativeChromeVisible, telegramProfile } from './telegram.ts'
 
 export interface TabItem {
   id: string
@@ -16,6 +16,7 @@ export interface Action {
   disabled?: boolean
   tone?: 'gold' | 'ghost'
   mark?: 'arrow' | 'check' | 'none'
+  testId?: string
 }
 
 export function Arrow() {
@@ -53,16 +54,24 @@ export function Shell(props: {
   onTab: (id: string) => void
   actions?: Action[]
   ready?: boolean
+  screen?: string
   children: ComponentChildren
 }) {
   const theme = themes[props.theme]
   const scrollRef = useRef<HTMLDivElement>(null)
   const [nativeChrome, setNativeChrome] = useState(false)
+  const [greeting, setGreeting] = useState<string | null>(null)
   const ready = props.ready !== false
+  const hasSettings = props.tabs.some((tab) => tab.id === 'settings')
 
   useEffect(() => {
     bootTelegram(theme)
-    const sync = () => setNativeChrome(nativeChromeVisible())
+    const sync = () => {
+      setNativeChrome(nativeChromeVisible())
+      const profile = telegramProfile()
+      applyFormatLocale(profile.language)
+      setGreeting(profile.firstName)
+    }
     sync()
     const timer = window.setInterval(sync, 400)
     const stop = window.setTimeout(() => window.clearInterval(timer), 2400)
@@ -96,6 +105,7 @@ export function Shell(props: {
       data-layout="frame"
       data-theme={theme.id}
       data-ready={ready ? 'true' : 'false'}
+      data-screen={props.screen}
     >
       <style>{themeBlock(theme)}</style>
       <div class="gridlines" aria-hidden="true"><i /><i /><i /></div>
@@ -104,14 +114,17 @@ export function Shell(props: {
           <button type="button" class="side left" onClick={() => { haptic('tap'); closeOrLeave() }}>CLOSE</button>
           <div>
             <h1>{props.title}</h1>
-            <div class="sub">MINI APP</div>
+            <div class="sub">{greeting ? greeting : 'MINI APP'}</div>
           </div>
-          <button type="button" class="side right" aria-label="Open settings" onClick={() => choose('settings')}>
-            <Dots />
-          </button>
+          {hasSettings ? (
+            <button type="button" class="side right" aria-label="Open settings" onClick={() => choose('settings')}>
+              <Dots />
+            </button>
+          ) : <span class="side right" />}
         </header>
       )}
       <div class="scroll" ref={scrollRef}>
+        {greeting ? <p class="greet">Hello, {greeting}</p> : null}
         {props.children}
       </div>
       <footer class="dock">
@@ -121,6 +134,7 @@ export function Shell(props: {
             type="button"
             class={action.tone === 'ghost' ? 'ghost' : 'cta'}
             disabled={action.disabled}
+            data-action={action.testId}
             onClick={() => run(action)}
           >
             <span>{action.label}</span>
@@ -130,7 +144,7 @@ export function Shell(props: {
             </span>
           </button>
         ))}
-        <nav class="tabbar" role="tablist" aria-label="Sections">
+        {props.tabs.length > 0 ? <nav class="tabbar" role="tablist" aria-label="Sections">
           {props.tabs.map((tab, index) => (
             <button
               key={tab.id}
@@ -145,7 +159,7 @@ export function Shell(props: {
               <span class="lbl">{tab.label}</span>
             </button>
           ))}
-        </nav>
+        </nav> : null}
       </footer>
     </div>
   )

@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
-import { CURRENCIES, formatDay, formatMoney, formatMonth, pad2, parseISODate, symbol, type Currency } from '../format.ts'
+import { CURRENCIES, formatDay, formatMoney, formatMonth, pad2, parseISODate, startOfDay, symbol, toISODate, type Currency } from '../format.ts'
+import { demoRequested } from '../mode.ts'
 import { loadRecord, placeLabel, readLocal, saveRecord, type RecordPlace } from '../storage.ts'
-import { bindMainButton, haptic } from '../telegram.ts'
+import { bindMainButton, haptic, shareWithFriend } from '../telegram.ts'
 import { themes } from '../theme.ts'
 import { Empty, Section, Shell, Stats, type Action } from '../ui.tsx'
 import {
   BUDGET_KEY,
+  createEmpty,
   createSeed,
   derive,
   heroText,
@@ -44,10 +46,10 @@ function parseStored(raw: string | null): BudgetState | null {
 }
 
 export function BudgetApp() {
-  const seed = useRef(parseStored(readLocal(BUDGET_KEY)) ?? createSeed())
-  const [state, setState] = useState<BudgetState>(seed.current)
-  const [place, setPlace] = useState<RecordPlace>(readLocal(BUDGET_KEY) ? 'device' : 'memory')
-  const [ready, setReady] = useState(false)
+  const demo = useRef(demoRequested()).current
+  const [state, setState] = useState<BudgetState | null>(() => (demo ? createSeed() : parseStored(readLocal(BUDGET_KEY))))
+  const [place, setPlace] = useState<RecordPlace>(demo ? 'memory' : readLocal(BUDGET_KEY) ? 'device' : 'memory')
+  const [ready, setReady] = useState(demo)
   const [tab, setTab] = useState('ledger')
   const [focus, setFocus] = useState<number | null>(null)
   const [armed, setArmed] = useState(false)
@@ -56,42 +58,41 @@ export function BudgetApp() {
   const dirty = useRef(false)
 
   useEffect(() => {
+    if (demo) return
     let cancel = false
-    const initial = seed.current
     void (async () => {
-      const had = readLocal(BUDGET_KEY)
-      if (!had) {
-        const where = await saveRecord(BUDGET_KEY, JSON.stringify(initial))
-        if (!cancel) setPlace(where)
-      } else {
+      try {
         const loaded = await loadRecord(BUDGET_KEY)
         const parsed = parseStored(loaded.raw)
-        if (!cancel && parsed && !dirty.current) {
-          setState(parsed)
-          setPlace(loaded.place)
-        } else if (!cancel) setPlace(loaded.place)
+        if (cancel) return
+        if (parsed && !dirty.current) setState(parsed)
+        setPlace(parsed ? loaded.place : 'memory')
+      } catch {
+        if (!cancel) setPlace('memory')
+      } finally {
+        if (!cancel) setReady(true)
       }
-      if (!cancel) setReady(true)
     })()
     return () => { cancel = true }
-  }, [])
+  }, [demo])
 
   function commit(next: BudgetState) {
     dirty.current = true
     setState(next)
     setArmed(false)
-    void saveRecord(BUDGET_KEY, JSON.stringify(next)).then(setPlace)
+    if (demo) return
+    void saveRecord(BUDGET_KEY, JSON.stringify(next)).then(setPlace).catch(() => setPlace('memory'))
   }
 
-  const ledger = derive(state)
+  const ledger = state ? derive(state) : null
   const theme = themes.budget
-  const savedText = heroText(ledger.saved)
+  const savedText = ledger ? heroText(ledger.saved) : '0'
   const scale = savedText.length >= 10 ? 'xs' : savedText.length >= 8 ? 'sm' : ''
-  const chip = `${ruleChip(state)} · ${state.currency}`
-  const focused = ledger.entries[(focus ?? ledger.currentWeek) - 1]
+  const chip = state ? `${ruleChip(state)} · ${state.currency}` : ''
+  const focused = ledger ? ledger.entries[(focus ?? ledger.currentWeek) - 1] : null
 
   useEffect(() => {
-    if (tab !== 'settings' || !armed) {
+    if (!state || tab !== 'settings' || !armed) {
       return bindMainButton({
         visible: false,
         text: 'CONFIRM RESET',
@@ -110,7 +111,7 @@ export function BudgetApp() {
   }, [tab, armed, state, theme.gold, theme.onGold])
 
   useEffect(() => {
-    if (tab !== 'circle') return
+    if (!state || tab !== 'circle') return
     let cancel = false
     let url = ''
     const view = derive(state)
@@ -147,6 +148,7 @@ export function BudgetApp() {
   }, [tab, state, theme.bg, theme.cream, theme.gold])
 
   function onCell(week: number) {
+    if (!state) return
     const paid = Boolean(state.paid[String(week)])
     setFocus(week)
     commit(toggleWeek(state, week))
@@ -154,6 +156,7 @@ export function BudgetApp() {
   }
 
   async function onShare() {
+    if (!state || !ledger) return
     setNote('RENDERING')
     const blob = card?.blob ?? (await renderCard({
       bg: theme.bg,
@@ -180,6 +183,7 @@ export function BudgetApp() {
   }
 
   async function onCopy() {
+    if (!state || !ledger) return
     const line = progressCaption(savedText, progressLabel(ledger, state.currency), ledger.currentWeek)
     try {
       await navigator.clipboard.writeText(line)
@@ -189,15 +193,27 @@ export function BudgetApp() {
     }
   }
 
+  if (!ready) {
+    return (
+      <Shell theme="budget" title="Budget Better" tabs={[]} active="ledger" home="ledger" onTab={setTab} ready={false} screen="loading">
+        <p class="loading">Reading the ledger</p>
+      </Shell>
+    )
+  }
+
+  if (!state || !ledger) {
+    return <Onboarding onOpen={commit} />
+  }
+
   const recent = ledger.entries.filter((entry) => entry.status === 'paid').slice().reverse().slice(0, 2)
   const history = ledger.entries.filter((entry) => entry.status !== 'future').slice().reverse()
   const actions = actionsFor(tab, ledger, state.currency, () => {
     if (!ledger.nextWeek) return
     onCell(ledger.nextWeek)
-  }, () => setTab('circle'), onShare, onDownload)
+  }, () => setTab('circle'), onShare, onDownload, shareWithFriend)
 
   return (
-    <Shell theme="budget" title="Budget Better" tabs={TABS} active={tab} home="ledger" onTab={setTab} actions={actions} ready={ready}>
+    <Shell theme="budget" title="Budget Better" tabs={TABS} active={tab} home="ledger" onTab={setTab} actions={actions} ready={ready} screen="ledger">
       {tab === 'ledger' ? (
         <>
           <Section index="01" title={`SAVINGS / ${state.year}`} aside={chip}>
@@ -298,6 +314,7 @@ function actionsFor(
   toCircle: () => void,
   share: () => void,
   download: () => void,
+  invite: () => void,
 ): Action[] {
   if (tab === 'ledger') {
     if (!ledger.nextWeek) return [{ label: 'CHALLENGE COMPLETE', disabled: true, mark: 'none' }]
@@ -307,6 +324,7 @@ function actionsFor(
   if (tab === 'circle') {
     return [
       { label: 'SHARE THE CARD', aside: 'PNG', onClick: share },
+      { label: 'SHARE WITH A FRIEND', onClick: invite, tone: 'ghost' },
       { label: 'DOWNLOAD', aside: 'PNG', onClick: download, tone: 'ghost' },
     ]
   }
@@ -361,6 +379,91 @@ function History(props: { entries: WeekEntry[]; currency: Currency; onToggle: (w
         </div>
       ))}
     </>
+  )
+}
+
+function Onboarding(props: { onOpen: (next: BudgetState) => void }) {
+  const [variant, setVariant] = useState<Variant>('classic')
+  const [multiplier, setMultiplier] = useState(1)
+  const [customAmount, setCustomAmount] = useState(25)
+  const [currency, setCurrency] = useState<Currency>('EUR')
+  const [startDate, setStartDate] = useState(() => toISODate(startOfDay(new Date())))
+  const draft = createEmpty(new Date(), { variant, multiplier, customAmount, currency, startDate })
+  const preview = derive(draft)
+  const sample = weekAmount(draft, preview.currentWeek)
+
+  return (
+    <Shell
+      theme="budget"
+      title="Budget Better"
+      tabs={[]}
+      active="ledger"
+      home="ledger"
+      onTab={() => undefined}
+      screen="onboarding"
+      actions={[{
+        label: 'OPEN THE LEDGER',
+        testId: 'open-ledger',
+        onClick: () => {
+          haptic('success')
+          props.onOpen(draft)
+        },
+      }]}
+    >
+      <Section index="01" title="RULE">
+        <div class="choices">
+          {(['classic', 'reverse', 'custom'] as const).map((item) => (
+            <button key={item} type="button" class="choice" aria-pressed={variant === item} onClick={() => { haptic('select'); setVariant(item) }}>
+              {item}
+            </button>
+          ))}
+        </div>
+        {variant === 'custom' ? (
+          <div class="field">
+            <span class="k">Weekly amount</span>
+            <span class="stepper">
+              <button type="button" aria-label="Decrease amount" onClick={() => setCustomAmount((value) => Math.max(1, value - 5))}>−</button>
+              <strong>{formatMoney(customAmount, currency)}</strong>
+              <button type="button" aria-label="Increase amount" onClick={() => setCustomAmount((value) => value + 5)}>+</button>
+            </span>
+          </div>
+        ) : (
+          <div class="field">
+            <span class="k">Multiplier</span>
+            <span class="stepper">
+              <button type="button" aria-label="Decrease multiplier" onClick={() => setMultiplier((value) => stepUnit(value, -1))}>−</button>
+              <strong>×{multiplier}</strong>
+              <button type="button" aria-label="Increase multiplier" onClick={() => setMultiplier((value) => stepUnit(value, 1))}>+</button>
+            </span>
+          </div>
+        )}
+        <p class="rule" data-field="preview">{ruleLine(draft)} Week {preview.currentWeek} saves {formatMoney(sample, currency)}. The year comes to {formatMoney(preview.goal, currency)}.</p>
+      </Section>
+      <Section index="02" title="CURRENCY">
+        <div class="currencies">
+          {CURRENCIES.map((code) => (
+            <button key={code} type="button" class="choice" aria-pressed={currency === code} onClick={() => { haptic('select'); setCurrency(code) }}>
+              {symbol(code)} {code}
+            </button>
+          ))}
+        </div>
+      </Section>
+      <Section index="03" title="START">
+        <label class="field">
+          <span class="k">Start date</span>
+          <input
+            type="date"
+            data-field="start"
+            value={startDate}
+            onInput={(event) => {
+              const value = event.currentTarget.value
+              if (/^\d{4}-\d{2}-\d{2}$/.test(value)) setStartDate(value)
+            }}
+          />
+        </label>
+        <p class="note">Week 1 begins on this date. The ledger opens empty.</p>
+      </Section>
+    </Shell>
   )
 }
 

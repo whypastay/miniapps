@@ -28,8 +28,34 @@ export function SantaApp() {
 
   if (!snap) {
     return (
-      <Shell theme="santa" title="Secret Santa" tabs={TABS} active={tab} home="game" onTab={setTab} ready={false}>
+      <Shell theme="santa" title="Secret Santa" tabs={TABS} active={tab} home="game" onTab={setTab} ready={false} screen="loading">
         <p class="loading">Reading the draw</p>
+      </Shell>
+    )
+  }
+
+  if (!snap.connected) {
+    return (
+      <Shell theme="santa" title="Secret Santa" tabs={TABS} active={tab} home="game" onTab={setTab} ready screen="waiting" actions={[{ label: 'WAITING ON THE BOT', disabled: true, mark: 'none' }]}>
+        {tab === 'wishlist' ? (
+          <Section index="01" title="YOUR LIST">
+            <Empty title="NO LIST" body="YOUR LINES ARRIVE WITH THE GROUP, FROM THE BOT." />
+          </Section>
+        ) : tab === 'group' ? (
+          <Section index="01" title="THE ROOM">
+            <Empty title="NO NAMES" body="THE BOT FILLS THE ROOM WHEN THE DRAW IS MADE." />
+          </Section>
+        ) : tab === 'settings' ? (
+          <Section index="01" title="RECORD" aside="WAITING">
+            <p class="note">Nothing is stored until the bot connects the group.</p>
+          </Section>
+        ) : (
+          <Section index="01" title="THE DRAW">
+            <div class="kicker">Your recipient</div>
+            <p class="hero-blank">—</p>
+            <p class="note">The bot sends the name when the group is drawn.</p>
+          </Section>
+        )}
       </Shell>
     )
   }
@@ -58,7 +84,7 @@ export function SantaApp() {
       : []
 
   return (
-    <Shell theme="santa" title="Secret Santa" tabs={TABS} active={tab} home="game" onTab={setTab} actions={actions} ready>
+    <Shell theme="santa" title="Secret Santa" tabs={TABS} active={tab} home="game" onTab={setTab} actions={actions} ready screen="draw">
       {tab === 'game' ? (
         <>
           <Section index="01" title={snap.studio} aside={`${snap.group.length} PLAYERS · ${recipient.drawStatus === 'done' ? 'DONE' : 'OPEN'}`}>

@@ -43,23 +43,31 @@ export function writeLocal(key: string, value: string): boolean {
 
 function cloudGet(key: string): Promise<string | null> {
   const cloud = getWebApp()?.CloudStorage
-  if (!cloud) return Promise.reject(new Error('no cloud'))
+  if (!cloud || typeof cloud.getItem !== 'function') return Promise.reject(new Error('no cloud'))
   return new Promise((resolve, reject) => {
-    cloud.getItem(key, (error, value) => {
-      if (error) reject(new Error(error))
-      else resolve(value ?? null)
-    })
+    try {
+      cloud.getItem(key, (error, value) => {
+        if (error) reject(new Error(String(error)))
+        else resolve(value ?? null)
+      })
+    } catch (error) {
+      reject(error instanceof Error ? error : new Error('cloud'))
+    }
   })
 }
 
 function cloudSet(key: string, value: string): Promise<void> {
   const cloud = getWebApp()?.CloudStorage
-  if (!cloud) return Promise.reject(new Error('no cloud'))
+  if (!cloud || typeof cloud.setItem !== 'function') return Promise.reject(new Error('no cloud'))
   return new Promise((resolve, reject) => {
-    cloud.setItem(key, value, (error) => {
-      if (error) reject(new Error(error))
-      else resolve()
-    })
+    try {
+      cloud.setItem(key, value, (error) => {
+        if (error) reject(new Error(String(error)))
+        else resolve()
+      })
+    } catch (error) {
+      reject(error instanceof Error ? error : new Error('cloud'))
+    }
   })
 }
 

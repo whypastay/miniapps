@@ -1,8 +1,10 @@
 import { addDays, startOfDay, toISODate } from '../format.ts'
+import { demoRequested } from '../mode.ts'
 import { readJson, writeJson } from '../storage.ts'
 import type { Fixture, MatchdayRepository, MatchdaySettings, MatchdaySnapshot, Pick, ResultPick } from './types.ts'
 
-const KEY = 'si:matchday:v1'
+const LIVE_KEY = 'si:matchday:v1'
+const DEMO_KEY = 'si:matchday:demo'
 
 function nextSunday(today: Date): Date {
   const start = startOfDay(today)
@@ -33,6 +35,7 @@ export function createMatchdaySeed(today = new Date()): MatchdaySnapshot {
     { id: 'f10', kickoff: stamp(sunday, 19, 0), home: 'Ipswich', away: 'Leicester' },
   ]
   return {
+    connected: true,
     gameweek: {
       played: 14,
       picking: 15,
@@ -70,49 +73,76 @@ export function createMatchdaySeed(today = new Date()): MatchdaySnapshot {
   }
 }
 
+export function createEmptyMatchday(): MatchdaySnapshot {
+  return {
+    connected: false,
+    gameweek: { played: 0, picking: 0, season: 38, lockAt: 0, resultPoints: 1, exactScorePoints: 3 },
+    fixtures: [],
+    picks: [],
+    table: [],
+    league: { name: 'Matchday', code: '', seasonLabel: 'FRIENDS LEAGUE' },
+    settings: { displayName: 'You', remindBeforeLock: false },
+  }
+}
+
 function revive(value: unknown): MatchdaySnapshot | null {
   if (!value || typeof value !== 'object') return null
   const snap = value as MatchdaySnapshot
+  if (typeof snap.connected !== 'boolean') return null
   if (!snap.gameweek || !Array.isArray(snap.fixtures) || !Array.isArray(snap.picks) || !Array.isArray(snap.table)) return null
   return snap
 }
 
-function read(): MatchdaySnapshot {
-  return readJson(KEY, revive) ?? createMatchdaySeed()
-}
-
 export class DemoMatchdayRepository implements MatchdayRepository {
+  private readonly key: string
+  private readonly demo: boolean
+
+  constructor(key: string, demo: boolean) {
+    this.key = key
+    this.demo = demo
+  }
+
+  private read(): MatchdaySnapshot {
+    return readJson(this.key, revive) ?? (this.demo ? createMatchdaySeed() : createEmptyMatchday())
+  }
+
   load(): Promise<MatchdaySnapshot> {
-    const existing = readJson(KEY, revive)
+    if (this.demo) {
+      const seed = createMatchdaySeed()
+      writeJson(this.key, seed)
+      return Promise.resolve(seed)
+    }
+    const existing = readJson(this.key, revive)
     if (existing) return Promise.resolve(existing)
-    const seed = createMatchdaySeed()
-    writeJson(KEY, seed)
-    return Promise.resolve(seed)
+    const empty = createEmptyMatchday()
+    writeJson(this.key, empty)
+    return Promise.resolve(empty)
   }
 
   savePicks(picks: Pick[]): Promise<void> {
-    const snapshot = read()
-    writeJson(KEY, { ...snapshot, picks })
+    const snapshot = this.read()
+    writeJson(this.key, { ...snapshot, picks })
     return Promise.resolve()
   }
 
   saveSettings(settings: MatchdaySettings): Promise<void> {
-    const snapshot = read()
+    const snapshot = this.read()
     const name = settings.displayName.trim() || 'You'
     const table = snapshot.table.map((row) => (row.isYou ? { ...row, name } : row))
-    writeJson(KEY, { ...snapshot, settings: { ...settings, displayName: name }, table })
+    writeJson(this.key, { ...snapshot, settings: { ...settings, displayName: name }, table })
     return Promise.resolve()
   }
 
   reset(): Promise<MatchdaySnapshot> {
-    const seed = createMatchdaySeed()
-    writeJson(KEY, seed)
-    return Promise.resolve(seed)
+    const next = this.demo ? createMatchdaySeed() : createEmptyMatchday()
+    writeJson(this.key, next)
+    return Promise.resolve(next)
   }
 }
 
 export function createMatchdayRepository(): MatchdayRepository {
-  return new DemoMatchdayRepository()
+  const demo = demoRequested()
+  return new DemoMatchdayRepository(demo ? DEMO_KEY : LIVE_KEY, demo)
 }
 
 export function picksMade(picks: Pick[]): number {

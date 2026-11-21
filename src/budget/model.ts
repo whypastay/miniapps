@@ -54,6 +54,21 @@ export interface Ledger {
 export const BUDGET_KEY = 'si:budget:v1'
 const UNIT_STEPS = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000]
 
+export function createEmpty(today = new Date(), overrides: Partial<Pick<BudgetState, 'variant' | 'multiplier' | 'customAmount' | 'currency' | 'startDate' | 'year'>> = {}): BudgetState {
+  const startDate = overrides.startDate ?? toISODate(startOfDay(today))
+  const year = overrides.year ?? Number(startDate.slice(0, 4))
+  return {
+    version: 1,
+    variant: overrides.variant ?? 'classic',
+    multiplier: Math.max(1, Math.round(overrides.multiplier ?? 1)),
+    customAmount: Math.max(1, Math.round(overrides.customAmount ?? 25)),
+    currency: overrides.currency ?? 'EUR',
+    year: Number.isFinite(year) ? year : today.getFullYear(),
+    startDate,
+    paid: {},
+  }
+}
+
 export function createSeed(today = new Date()): BudgetState {
   const start = addDays(startOfDay(today), -30 * 7)
   const paid: Record<string, string> = {}

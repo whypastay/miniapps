@@ -39,6 +39,7 @@ export interface SantaSettings {
 }
 
 export interface SantaSnapshot {
+  connected: boolean
   studio: string
   settings: SantaSettings
   recipient: Recipient

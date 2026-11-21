@@ -41,7 +41,7 @@ export interface TelegramWebApp {
   expand: () => void
   close: () => void
   initData: string
-  initDataUnsafe?: { user?: { id: number } }
+  initDataUnsafe?: { user?: { id: number; first_name?: string; language_code?: string } }
   platform: string
   colorScheme?: 'light' | 'dark'
   isFullscreen?: boolean
@@ -172,14 +172,34 @@ export function bindMainButton(options: {
   }
 }
 
+export function telegramProfile(): { firstName: string | null; language: string | null } {
+  const user = getWebApp()?.initDataUnsafe?.user
+  const first = typeof user?.first_name === 'string' ? user.first_name.trim() : ''
+  const language = typeof user?.language_code === 'string' ? user.language_code.trim() : ''
+  return { firstName: first || null, language: language || null }
+}
+
 export function closeOrLeave(): void {
   const tg = getWebApp()
-  if (inTelegram() && tg) {
-    tg.close()
-    return
-  }
+  try {
+    tg?.close()
+  } catch { /* close is missing or refused */ }
+  if (inTelegram()) return
   const directory = new URL('.', location.href)
   location.href = new URL('..', directory).href
+}
+
+export function shareWithFriend(): void {
+  const text = 'Join me on the 52-week challenge.'
+  const url = `https://t.me/share/url?url=${encodeURIComponent('https://t.me/BBChallenge_bot')}&text=${encodeURIComponent(text)}`
+  const tg = getWebApp()
+  try {
+    if (tg?.openTelegramLink) {
+      tg.openTelegramLink(url)
+      return
+    }
+  } catch { /* open the link below */ }
+  window.open(url, '_blank', 'noopener')
 }
 
 export function preparedShareId(): string | null {

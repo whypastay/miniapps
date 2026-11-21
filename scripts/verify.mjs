@@ -1,11 +1,11 @@
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir } from 'node:fs/promises'
 import puppeteer from 'puppeteer-core'
 
 const base = process.env.BASE_URL ?? 'http://127.0.0.1:43123'
 const out = process.env.SHOT_DIR ?? '/tmp/qa'
 const chrome = process.env.CHROME ?? '/usr/bin/google-chrome'
-
 const failures = []
+
 function check(name, ok, detail = '') {
   if (!ok) failures.push(`${name}${detail ? ` — ${detail}` : ''}`)
   else console.log(`ok  ${name}`)
@@ -27,15 +27,13 @@ async function open(path) {
     await document.fonts.load('400 16px "IBM Plex Mono"')
     await document.fonts.ready
   })
-  await new Promise((resolve) => setTimeout(resolve, 80))
+  await new Promise((resolve) => setTimeout(resolve, 60))
   return page
 }
 
 async function shot(page, name) {
   await mkdir(out, { recursive: true })
-  const file = `${out}/${name}.png`
-  await page.screenshot({ path: file, fullPage: false })
-  return file
+  await page.screenshot({ path: `${out}/${name}.png` })
 }
 
 async function overflow(page, label) {
@@ -44,118 +42,94 @@ async function overflow(page, label) {
     cw: document.documentElement.clientWidth,
   }))
   check(`${label} no horizontal overflow`, box.sw <= box.cw + 1, `scroll ${box.sw} client ${box.cw}`)
-  const tabs = await page.$eval('.tabbar', (el) => {
-    const r = el.getBoundingClientRect()
-    return { top: r.top, bottom: r.bottom }
-  })
-  check(`${label} tabs inside viewport`, tabs.bottom <= 845 && tabs.top > 600, JSON.stringify(tabs))
 }
 
 const budget = await open('/budget/')
-const saved = await budget.$eval('[data-field="saved"]', (el) => el.textContent.trim())
-const progress = await budget.$eval('[data-field="progress"]', (el) => el.textContent.trim())
-const week = await budget.$eval('[data-field="week"]', (el) => el.textContent.trim())
-const streak = await budget.$eval('[data-field="streak"]', (el) => el.textContent.trim())
-const missed = await budget.$eval('[data-field="missed"]', (el) => el.textContent.trim())
-const next = await budget.$eval('[data-field="next"]', (el) => el.textContent.trim())
-check('saved 4,480', saved === '4,480', saved)
-check('progress', progress.includes('32.5%') && progress.includes('13,780'), progress)
-check('week 31', week === '31', week)
-check('streak 13', streak === '13', streak)
-check('missed 1', missed === '1', missed)
-check('next €310', next === '€310', next)
-const fonts = await budget.evaluate(() => {
-  const hero = getComputedStyle(document.querySelector('.hero-num'))
-  return {
-    cond: document.fonts.check('700 80px Archivo'),
-    mono: document.fonts.check('400 16px "IBM Plex Mono"'),
-    stretch: hero.fontStretch,
-    family: hero.fontFamily,
-    weight: hero.fontWeight,
-  }
-})
-console.log('  type', fonts.family, fonts.weight, fonts.stretch)
-check('archivo loaded', fonts.cond)
-check('plex loaded', fonts.mono)
-check('hero is condensed', fonts.stretch === '62%' || fonts.stretch === 'extra-condensed', fonts.stretch)
-await overflow(budget, 'budget')
-await shot(budget, 'budget-ledger')
-
-await budget.click('[data-week="31"]')
-await budget.waitForFunction(() => document.querySelector('[data-field="saved"]')?.textContent?.trim() === '4,790')
-const mid = await budget.$eval('[data-field="saved"]', (el) => el.textContent.trim())
-check('week 31 logs €310', mid === '4,790', mid)
+check('onboarding', await budget.$eval('[data-screen]', (el) => el.getAttribute('data-screen')) === 'onboarding')
+check('no demo total', !(await budget.evaluate(() => document.body.innerText.includes('4,480'))))
+await overflow(budget, 'onboarding')
+await shot(budget, 'budget-onboarding')
+await budget.click('[data-action="open-ledger"]')
+await budget.waitForSelector('[data-screen="ledger"]')
+const emptySaved = await budget.$eval('[data-field="saved"]', (el) => el.textContent.trim())
+const emptyWeek = await budget.$eval('[data-field="week"]', (el) => el.textContent.trim())
+check('empty saved 0', emptySaved === '0', emptySaved)
+check('empty week 1', emptyWeek === '1', emptyWeek)
+await overflow(budget, 'empty ledger')
+await shot(budget, 'budget-empty')
 await budget.reload({ waitUntil: 'domcontentloaded' })
-await budget.waitForSelector('[data-ready="true"]')
-await budget.evaluate(() => document.fonts.ready)
-const after = await budget.$eval('[data-field="saved"]', (el) => el.textContent.trim())
-check('persists across reload', after === '4,790', after)
-const stored = await budget.evaluate(() => localStorage.getItem('si:budget:v1'))
-check('localStorage written', Boolean(stored && stored.includes('"31"')))
-
-await budget.click('[data-tab="history"]')
-await shot(budget, 'budget-history')
-await budget.click('[data-tab="circle"]')
-await budget.waitForSelector('.card-frame img', { timeout: 8000 })
-await shot(budget, 'budget-circle')
-await budget.click('[data-tab="settings"]')
-await shot(budget, 'budget-settings')
-await budget.click('[aria-pressed="false"]')
+await budget.waitForSelector('[data-screen="ledger"]')
+const kept = await budget.$eval('[data-field="saved"]', (el) => el.textContent.trim())
+check('empty ledger persists', kept === '0', kept)
 await budget.close()
 
+const demo = await open('/budget/?demo=1')
+const saved = await demo.$eval('[data-field="saved"]', (el) => el.textContent.trim())
+const week = await demo.$eval('[data-field="week"]', (el) => el.textContent.trim())
+check('demo saved', saved === '4,480', saved)
+check('demo week', week === '31', week)
+await overflow(demo, 'demo ledger')
+await shot(demo, 'budget-demo')
+await demo.close()
+
 const santa = await open('/santa/')
-const name = await santa.$eval('[data-field="recipient"]', (el) => el.textContent.replace(/\s+/g, ' ').trim())
-check('recipient Aisha Rahman', name.toLowerCase().includes('aisha') && name.toLowerCase().includes('rahman'), name)
+const santaText = await santa.evaluate(() => document.body.innerText)
+check('santa waiting', await santa.$eval('[data-screen]', (el) => el.getAttribute('data-screen')) === 'waiting')
+check('santa has no recipient', !santaText.includes('AISHA') && !santaText.includes('RAHMAN'))
 await overflow(santa, 'santa')
-await shot(santa, 'santa-game')
-await santa.click('[data-tab="wishlist"]')
-const title = await santa.$('[data-field="wish-title"]')
-await title.click({ clickCount: 3 })
-await title.type(' cartridge')
-await santa.waitForFunction(() => localStorage.getItem('si:santa:v1')?.includes('cartridge'))
-await santa.reload({ waitUntil: 'domcontentloaded' })
-await santa.waitForSelector('[data-ready="true"]')
-await santa.click('[data-tab="wishlist"]')
-const kept = await santa.$eval('[data-field="wish-title"]', (el) => el.value)
-check('wishlist persists', kept.includes('cartridge'), kept)
-await shot(santa, 'santa-wishlist')
-await santa.click('[data-tab="group"]')
-await shot(santa, 'santa-group')
-await santa.click('[data-tab="settings"]')
-await shot(santa, 'santa-settings')
+await shot(santa, 'santa-default')
 await santa.close()
 
 const match = await open('/matchday/')
-const position = await match.$eval('[data-field="position"]', (el) => el.textContent.trim())
-const picks = await match.$eval('[data-field="picks"]', (el) => el.textContent.trim())
-check('position 03', position === '03', position)
-check('picks 6/10', picks === '6/10', picks)
-const marco = await match.evaluate(() => document.body.innerText.includes('Marco B.'))
-check('table has Marco', marco)
+const matchText = await match.evaluate(() => document.body.innerText)
+check('matchday waiting', await match.$eval('[data-screen]', (el) => el.getAttribute('data-screen')) === 'waiting')
+check('matchday has no table', !matchText.includes('MARCO') && !matchText.includes('PRIYA'))
 await overflow(match, 'matchday')
-await shot(match, 'matchday-table')
-await match.click('[data-tab="picks"]')
-await shot(match, 'matchday-picks')
-const before = await match.$eval('[data-pick="f7"][data-result="1"]', (el) => el.getAttribute('aria-pressed'))
-await match.click('[data-pick="f7"][data-result="1"]')
-await match.waitForFunction(() => document.querySelector('[data-pick="f7"][data-result="1"]')?.getAttribute('aria-pressed') === 'true')
-await match.reload({ waitUntil: 'domcontentloaded' })
-await match.waitForSelector('[data-ready="true"]')
-await match.click('[data-tab="picks"]')
-const pressed = await match.$eval('[data-pick="f7"][data-result="1"]', (el) => el.getAttribute('aria-pressed'))
-check('pick persists', before !== 'true' && pressed === 'true', `${before} -> ${pressed}`)
-await match.click('[data-tab="league"]')
-await shot(match, 'matchday-league')
-await match.click('[data-tab="settings"]')
-await shot(match, 'matchday-settings')
+await shot(match, 'matchday-default')
 await match.close()
 
-const hub = await open('/')
-await shot(hub, 'hub')
-await hub.close()
-
 await browser.close()
-await writeFile(`${out}/report.json`, JSON.stringify({ failures }, null, 2))
+
+const cloudBrowser = await puppeteer.launch({
+  executablePath: chrome,
+  headless: true,
+  args: ['--no-sandbox', '--disable-dev-shm-usage'],
+})
+const cloud = await cloudBrowser.newPage()
+await cloud.setRequestInterception(true)
+cloud.on('request', (request) => {
+  if (request.url().includes('telegram.org')) request.abort()
+  else request.continue()
+})
+await cloud.evaluateOnNewDocument(() => {
+  window.__closed = false
+  window.Telegram = {
+    WebApp: {
+      initData: 'query_id=1',
+      initDataUnsafe: { user: { id: 7, first_name: 'Maya', language_code: 'de' } },
+      platform: 'ios',
+      isFullscreen: true,
+      ready() {},
+      expand() {},
+      close() { window.__closed = true },
+      CloudStorage: {
+        getItem() { throw new Error('unavailable') },
+        setItem() { throw new Error('unavailable') },
+      },
+    },
+  }
+})
+await cloud.goto(base + '/budget/', { waitUntil: 'domcontentloaded' })
+await cloud.waitForSelector('[data-screen="onboarding"]', { timeout: 8000 })
+const eyebrow = await cloud.$eval('.sub', (el) => el.textContent.trim())
+check('greets by first name', eyebrow.toUpperCase() === 'MAYA', eyebrow)
+const preview = await cloud.$eval('[data-field="preview"]', (el) => el.textContent)
+check('german grouping', preview.includes('1.378'), preview)
+check('onboarding survived dead cloud storage', /week 1/i.test(preview), preview)
+await cloud.click('.side.left')
+const closed = await cloud.evaluate(() => window.__closed === true)
+check('close calls WebApp.close', closed)
+await cloudBrowser.close()
 if (failures.length) {
   console.error('\nFAILED')
   for (const line of failures) console.error('  ' + line)

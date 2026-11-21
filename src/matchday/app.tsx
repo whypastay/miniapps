@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
 import { formatDay, formatRemain, pad2, parseISODate } from '../format.ts'
 import { haptic } from '../telegram.ts'
-import { Section, Shell, Stats } from '../ui.tsx'
+import { Empty, Section, Shell, Stats } from '../ui.tsx'
 import { createMatchdayRepository, impliedResult, picksMade } from './demo.ts'
 import type { MatchdayRepository, MatchdaySnapshot, Pick, ResultPick } from './types.ts'
 
@@ -34,8 +34,34 @@ export function MatchdayApp() {
 
   if (!snap) {
     return (
-      <Shell theme="matchday" title="Matchday" tabs={TABS} active={tab} home="table" onTab={setTab} ready={false}>
+      <Shell theme="matchday" title="Matchday" tabs={TABS} active={tab} home="table" onTab={setTab} ready={false} screen="loading">
         <p class="loading">Reading the league</p>
+      </Shell>
+    )
+  }
+
+  if (!snap.connected) {
+    return (
+      <Shell theme="matchday" title="Matchday" tabs={TABS} active={tab} home="table" onTab={setTab} ready screen="waiting" actions={[{ label: 'WAITING ON THE BOT', disabled: true, mark: 'none' }]}>
+        {tab === 'picks' ? (
+          <Section index="01" title="PICKS">
+            <Empty title="NO FIXTURES" body="THE BOT PUBLISHES THE SLATE WHEN THE GAMEWEEK OPENS." />
+          </Section>
+        ) : tab === 'league' ? (
+          <Section index="01" title="LEAGUE">
+            <Empty title="NO ROOM" body="THE LEAGUE OPENS FROM THE BOT." />
+          </Section>
+        ) : tab === 'settings' ? (
+          <Section index="01" title="RECORD" aside="WAITING">
+            <p class="note">Nothing is stored until the bot connects the league.</p>
+          </Section>
+        ) : (
+          <Section index="01" title="SUNDAY SQUAD">
+            <div class="kicker">Your position</div>
+            <p class="hero-blank">—</p>
+            <p class="note">The table opens from the bot.</p>
+          </Section>
+        )}
       </Shell>
     )
   }
