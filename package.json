@@ -1,0 +1,22 @@
+{
+  "name": "swiss-instrument",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 43123",
+    "build": "tsc -b && vite build && cp dist/index.html dist/404.html",
+    "preview": "vite preview --host 127.0.0.1 --port 43123 --strictPort",
+    "verify": "node scripts/verify.mjs"
+  },
+  "dependencies": {
+    "preact": "^11.1.1"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.10.6",
+    "@types/node": "^24.19.2",
+    "puppeteer-core": "^25.18.1",
+    "typescript": "~7.0.2",
+    "vite": "^8.3.6"
+  }
+}
