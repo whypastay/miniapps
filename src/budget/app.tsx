@@ -3,6 +3,7 @@ import { CURRENCIES, formatDay, formatMoney, formatMonth, pad2, parseISODate, st
 import { demoRequested } from '../mode.ts'
 import { loadRecord, placeLabel, readLocal, saveRecord, type RecordPlace } from '../storage.ts'
 import { bindMainButton, haptic, shareWithFriend } from '../telegram.ts'
+import { Api, ApiError, connect, openLink, requestWriteAccess } from '../api.ts'
 import { themes } from '../theme.ts'
 import { Check, Empty, Section, Shell, Stats, sentence, type Action } from '../ui.tsx'
 import {
@@ -56,19 +57,48 @@ export function BudgetApp() {
   const [card, setCard] = useState<{ blob: Blob; url: string } | null>(null)
   const [note, setNote] = useState('')
   const dirty = useRef(false)
+  const api = useRef<Api | null>(null)
+  const [server, setServer] = useState<ServerInfo | null>(null)
+  const [sync, setSync] = useState<SyncState>('local')
+  const pushTimer = useRef<number | null>(null)
 
   useEffect(() => {
     if (demo) return
     let cancel = false
     void (async () => {
+      let local: BudgetState | null = null
       try {
         const loaded = await loadRecord(BUDGET_KEY)
-        const parsed = parseStored(loaded.raw)
+        local = parseStored(loaded.raw)
         if (cancel) return
-        if (parsed && !dirty.current) setState(parsed)
-        setPlace(parsed ? loaded.place : 'memory')
+        if (local && !dirty.current) setState(local)
+        setPlace(local ? loaded.place : 'memory')
       } catch {
         if (!cancel) setPlace('memory')
+      }
+      // the bot's database is the source of truth when the app runs inside Telegram
+      try {
+        const client = await connect('budget')
+        if (client && !cancel) {
+          api.current = client
+          const remote = await client.get<ServerInfo>('/state')
+          if (cancel) return
+          setServer(remote)
+          const fromBot = remote.state ? sanitize(remote.state) : null
+          if (fromBot && !dirty.current) {
+            setState(fromBot)
+            void saveRecord(BUDGET_KEY, JSON.stringify(fromBot)).then(setPlace).catch(() => undefined)
+            setSync('synced')
+          } else if (local) {
+            // first run with the bot: move the device ledger up
+            const up = await client.put<ServerInfo>('/state', { state: local, timezone: zoneName() })
+            if (!cancel) { setServer(up); setSync('synced') }
+          } else {
+            setSync('synced')
+          }
+        }
+      } catch {
+        if (!cancel && api.current) setSync('offline')
       } finally {
         if (!cancel) setReady(true)
       }
@@ -76,12 +106,40 @@ export function BudgetApp() {
     return () => { cancel = true }
   }, [demo])
 
+  function push(next: BudgetState) {
+    const client = api.current
+    if (!client) return
+    setSync('saving')
+    if (pushTimer.current) window.clearTimeout(pushTimer.current)
+    pushTimer.current = window.setTimeout(() => {
+      void client.put<ServerInfo>('/state', { state: next, timezone: zoneName() })
+        .then((info) => { setServer(info); setSync('synced') })
+        .catch(() => setSync('offline'))
+    }, 500)
+  }
+
   function commit(next: BudgetState) {
     dirty.current = true
     setState(next)
     setArmed(false)
     if (demo) return
     void saveRecord(BUDGET_KEY, JSON.stringify(next)).then(setPlace).catch(() => setPlace('memory'))
+    push(next)
+  }
+
+  async function saveReminder(reminder: Reminder): Promise<string | null> {
+    const client = api.current
+    if (!client) return 'Open the app from Telegram to set reminders.'
+    try {
+      if (reminder.enabled) void requestWriteAccess()
+      const info = await client.put<ServerInfo>('/reminder', { ...reminder, timezone: zoneName() })
+      setServer(info)
+      haptic('success')
+      return null
+    } catch (err) {
+      haptic('warning')
+      return err instanceof ApiError ? err.message : 'Could not save the reminder.'
+    }
   }
 
   const ledger = state ? derive(state) : null
@@ -210,7 +268,7 @@ export function BudgetApp() {
   const actions = actionsFor(tab, ledger, state.currency, () => {
     if (!ledger.nextWeek) return
     onCell(ledger.nextWeek)
-  }, () => setTab('circle'), onShare, onDownload, shareWithFriend)
+  }, () => setTab('circle'), onShare, onDownload, server?.shareUrl ? () => openLink(server.shareUrl) : shareWithFriend)
 
   const mast: [string, string] = [`The 52-week ledger`, `${state.year} · ${chip}`]
   const todayAt = Math.min(100, Math.max(0, ((ledger.currentWeek - 0.5) / 52) * 100))
@@ -306,6 +364,9 @@ export function BudgetApp() {
           ledgerWeek={ledger.currentWeek}
           ledgerGoal={ledger.goal}
           place={place}
+          sync={api.current ? sync : null}
+          reminder={server?.reminder ?? null}
+          onReminder={saveReminder}
           armed={armed}
           onArm={setArmed}
           onChange={commit}
@@ -483,6 +544,9 @@ function Settings(props: {
   ledgerWeek: number
   ledgerGoal: number
   place: RecordPlace
+  sync: SyncState | null
+  reminder: Reminder | null
+  onReminder: (r: Reminder) => Promise<string | null>
   armed: boolean
   onArm: (armed: boolean) => void
   onChange: (next: BudgetState) => void
@@ -562,8 +626,11 @@ function Settings(props: {
         </label>
         <p class="note">Current week follows the start date. Marks stay. Amounts follow the rule.</p>
       </Section>
-      <Section title="Record" aside={placeLabel(props.place)}>
-        <p class="note">Outside Telegram the ledger stays on this device. Inside Telegram it also writes to CloudStorage.</p>
+      {props.sync ? <ReminderSection reminder={props.reminder} onSave={props.onReminder} /> : null}
+      <Section title="Record" aside={props.sync ? SYNC_LABEL[props.sync] : placeLabel(props.place)}>
+        <p class="note">{props.sync
+          ? 'Your ledger lives in the bot: marks from the app show in the chat and the reminders, and the other way round.'
+          : 'Outside Telegram the ledger stays on this device. Inside Telegram it also writes to CloudStorage.'}</p>
       </Section>
       <Section title="Reset">
         {props.armed ? (
@@ -582,5 +649,52 @@ function Settings(props: {
         )}
       </Section>
     </>
+  )
+}
+
+interface Reminder { enabled: boolean; weekday: number | null; hour: number | null; minute: number; timezone?: string | null }
+interface ServerInfo { state: unknown; skipped: number[]; reminder: Reminder; currencyRaw: string | null; referrals: number; refLink: string; shareUrl: string; bot: string }
+type SyncState = 'local' | 'saving' | 'synced' | 'offline'
+const SYNC_LABEL: Record<SyncState, string> = { local: 'THIS DEVICE', saving: 'SAVING', synced: 'SYNCED WITH THE BOT', offline: 'OFFLINE · WILL RETRY' }
+const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+function zoneName(): string {
+  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' } catch { return 'UTC' }
+}
+
+function ReminderSection(props: { reminder: Reminder | null; onSave: (r: Reminder) => Promise<string | null> }) {
+  const current = props.reminder
+  const [day, setDay] = useState<number>(current?.weekday ?? 6)
+  const [hour, setHour] = useState<number>(current?.hour ?? 19)
+  const [error, setError] = useState<string | null>(null)
+  const enabled = Boolean(current?.enabled)
+  const changed = !enabled || day !== current?.weekday || hour !== current?.hour
+  async function save(next: Reminder) {
+    setError(await props.onSave(next))
+  }
+  return (
+    <Section title="Weekly reminder" aside={enabled ? `${DAYS[current!.weekday ?? 0]} ${pad2(current!.hour ?? 0)}:${pad2(current!.minute ?? 0)}` : 'Off'}>
+      <div class="picks-wrap" role="group" aria-label="Day">
+        {DAYS.map((label, index) => (
+          <button type="button" class="choice" key={label} aria-pressed={day === index} data-day={index} onClick={() => { haptic('select'); setDay(index) }}>{label}</button>
+        ))}
+      </div>
+      <div class="field">
+        <span class="k">Time</span>
+        <span class="stepper">
+          <button type="button" aria-label="Earlier" onClick={() => setHour((h) => (h + 23) % 24)}>−</button>
+          <strong data-field="remind-hour">{pad2(hour)}:00</strong>
+          <button type="button" aria-label="Later" onClick={() => setHour((h) => (h + 1) % 24)}>+</button>
+        </span>
+      </div>
+      <div class="field">
+        <span class="k">{enabled ? 'The bot nudges you if the week is not marked' : 'Get a nudge from the bot'}</span>
+        <span>
+          {changed ? <button type="button" class="text-btn" data-action="remind-save" onClick={() => void save({ enabled: true, weekday: day, hour, minute: 0 })}>{enabled ? 'SAVE' : 'TURN ON'}</button> : null}
+          {enabled ? <>{changed ? '  ·  ' : ''}<button type="button" class="text-btn danger" data-action="remind-off" onClick={() => void save({ enabled: false, weekday: current!.weekday, hour: current!.hour, minute: 0 })}>TURN OFF</button></> : null}
+        </span>
+      </div>
+      {error ? <p class="note danger">{error}</p> : null}
+    </Section>
   )
 }

@@ -4,6 +4,9 @@ import { haptic } from '../telegram.ts'
 import { Empty, Seal, Section, Shell } from '../ui.tsx'
 import { LiveSanta, openBot } from './live.tsx'
 import { createSantaRepository } from './repo.ts'
+import { ServerSanta } from './server.tsx'
+import { connect, type Api } from '../api.ts'
+import { demoRequested } from '../mode.ts'
 import type { SantaRepository, SantaSnapshot, WishlistItem } from './types.ts'
 
 const TABS = [
@@ -14,6 +17,26 @@ const TABS = [
 ]
 
 export function SantaApp() {
+  // undefined = still looking for the live backend; null = none (snapshot / demo mode)
+  const [api, setApi] = useState<Api | null | undefined>(demoRequested() ? null : undefined)
+  useEffect(() => {
+    if (api !== undefined) return
+    let cancel = false
+    void connect('santa').then((next) => { if (!cancel) setApi(next) })
+    return () => { cancel = true }
+  }, [])
+  if (api === undefined) {
+    return (
+      <Shell theme="santa" title="Secret Santa" tabs={[]} active="x" home="x" onTab={() => undefined} ready={false} screen="loading" mast={['Secret Santa', 'Connecting']}>
+        <p class="loading">Connecting to the bot</p>
+      </Shell>
+    )
+  }
+  if (api) return <ServerSanta api={api} onOffline={() => setApi(null)} />
+  return <SnapshotSanta />
+}
+
+function SnapshotSanta() {
   const repo = useRef<SantaRepository>(createSantaRepository())
   const [snap, setSnap] = useState<SantaSnapshot | null>(null)
   const [tab, setTab] = useState('game')

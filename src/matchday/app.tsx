@@ -5,6 +5,9 @@ import { Empty, Pitch, Section, Shell } from '../ui.tsx'
 import { impliedResult, picksMade } from './demo.ts'
 import { LiveMatchdayApp, openBot } from './live.tsx'
 import { createMatchdayRepository } from './repo.ts'
+import { ServerMatchday } from './server.tsx'
+import { connect, type Api } from '../api.ts'
+import { demoRequested } from '../mode.ts'
 import type { MatchdayRepository, MatchdaySnapshot, Pick, ResultPick } from './types.ts'
 
 const TABS = [
@@ -15,6 +18,25 @@ const TABS = [
 ]
 
 export function MatchdayApp() {
+  const [api, setApi] = useState<Api | null | undefined>(demoRequested() ? null : undefined)
+  useEffect(() => {
+    if (api !== undefined) return
+    let cancel = false
+    void connect('matchday').then((next) => { if (!cancel) setApi(next) })
+    return () => { cancel = true }
+  }, [])
+  if (api === undefined) {
+    return (
+      <Shell theme="matchday" title="Matchday" tabs={[]} active="x" home="x" onTab={() => undefined} ready={false} screen="loading" mast={['Matchday', 'Connecting']}>
+        <p class="loading">Connecting to the bot</p>
+      </Shell>
+    )
+  }
+  if (api) return <ServerMatchday api={api} onOffline={() => setApi(null)} />
+  return <SnapshotMatchday />
+}
+
+function SnapshotMatchday() {
   const repo = useRef<MatchdayRepository>(createMatchdayRepository())
   const [snap, setSnap] = useState<MatchdaySnapshot | null>(null)
   const [tab, setTab] = useState('table')

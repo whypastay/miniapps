@@ -97,8 +97,9 @@ export function sanitize(value: unknown): BudgetState | null {
   if (raw.variant !== 'classic' && raw.variant !== 'reverse' && raw.variant !== 'custom') return null
   if (!isCurrency(raw.currency)) return null
   if (typeof raw.startDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(raw.startDate)) return null
-  if (typeof raw.multiplier !== 'number' || !Number.isFinite(raw.multiplier) || raw.multiplier < 1) return null
-  if (typeof raw.customAmount !== 'number' || !Number.isFinite(raw.customAmount) || raw.customAmount < 1) return null
+  // the bot accepts decimal amounts (×0.5, 12.50 a week), so only reject non-positive values
+  if (typeof raw.multiplier !== 'number' || !Number.isFinite(raw.multiplier) || raw.multiplier <= 0) return null
+  if (typeof raw.customAmount !== 'number' || !Number.isFinite(raw.customAmount) || raw.customAmount <= 0) return null
   if (typeof raw.year !== 'number' || !Number.isFinite(raw.year)) return null
   if (!raw.paid || typeof raw.paid !== 'object') return null
   const paid: Record<string, string> = {}
@@ -111,8 +112,8 @@ export function sanitize(value: unknown): BudgetState | null {
   return {
     version: 1,
     variant: raw.variant,
-    multiplier: Math.round(raw.multiplier),
-    customAmount: Math.round(raw.customAmount),
+    multiplier: Math.round(raw.multiplier * 100) / 100,
+    customAmount: Math.round(raw.customAmount * 100) / 100,
     currency: raw.currency,
     year: Math.round(raw.year),
     startDate: raw.startDate,

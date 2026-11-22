@@ -91,6 +91,10 @@ export function Shell(props: {
   mast?: [string, string]
   ready?: boolean
   screen?: string
+  /** Telegram BackButton on the home tab (e.g. back to a list of games). */
+  onBack?: () => void
+  /** Short status line under the masthead (saving, errors). */
+  toast?: string | null
   children: ComponentChildren
 }) {
   const theme = themes[props.theme]
@@ -117,7 +121,10 @@ export function Shell(props: {
     }
   }, [theme])
 
-  useEffect(() => bindBackButton(props.active !== props.home, () => props.onTab(props.home)), [props.active, props.home, props.onTab])
+  useEffect(() => bindBackButton(
+    props.active !== props.home || Boolean(props.onBack),
+    () => { if (props.active !== props.home) props.onTab(props.home); else props.onBack?.() },
+  ), [props.active, props.home, props.onTab, props.onBack])
 
   useEffect(() => {
     scrollRef.current?.scrollTo(0, 0)
@@ -167,6 +174,7 @@ export function Shell(props: {
           <span>{props.mast[1]}</span>
         </div>
       ) : <div class="mast bare" aria-hidden="true" />}
+      {props.toast ? <div class="toast" role="status" data-field="toast">{props.toast}</div> : null}
       <div class="scroll" ref={scrollRef}>
         <div class="page">{props.children}</div>
       </div>
