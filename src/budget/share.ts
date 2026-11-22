@@ -2,8 +2,8 @@ import type { CellState } from './model.ts'
 import { preparedShareId, sharePreparedMessage } from '../telegram.ts'
 
 export interface CardInput {
-  bg: string
-  cream: string
+  paper: string
+  ink: string
   gold: string
   year: number
   rule: string
@@ -20,14 +20,11 @@ export function progressCaption(saved: string, progress: string, week: number): 
   return `Budget Better · ${saved} saved · ${progress} · week ${week} of 52.`
 }
 
-function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): void {
-  ctx.beginPath()
-  ctx.rect(x, y, w, h)
-}
-
 export async function renderCard(input: CardInput): Promise<{ blob: Blob; url: string }> {
-  await document.fonts.load('700 180px Archivo')
-  await document.fonts.load('400 28px "IBM Plex Mono"')
+  await document.fonts.load('400 180px "Instrument Serif"')
+  await document.fonts.load('italic 400 60px "Instrument Serif"')
+  await document.fonts.load('500 28px "Geist Mono"')
+  await document.fonts.load('400 28px Geist')
   await document.fonts.ready
   const canvas = document.createElement('canvas')
   canvas.width = 1080
@@ -35,121 +32,131 @@ export async function renderCard(input: CardInput): Promise<{ blob: Blob; url: s
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('canvas')
 
-  ctx.fillStyle = input.bg
-  ctx.fillRect(0, 0, 1080, 1350)
-
-  ctx.fillStyle = 'rgba(243, 235, 221, 0.16)'
-  for (let y = 18; y < 1350; y += 28) {
-    for (let x = 18; x < 1080; x += 28) {
-      ctx.beginPath()
-      ctx.arc(x, y, 1.3, 0, Math.PI * 2)
-      ctx.fill()
-    }
-  }
-
-  ctx.strokeStyle = 'rgba(243, 235, 221, 0.16)'
-  ctx.lineWidth = 1
-  for (const x of [270, 540, 810]) {
-    ctx.beginPath()
-    ctx.moveTo(x, 0)
-    ctx.lineTo(x, 1350)
-    ctx.stroke()
-  }
-
+  const W = 1080
   const left = 72
-  ctx.fillStyle = input.cream
-  ctx.font = '500 22px "IBM Plex Mono"'
+  const right = W - 72
+  const span = right - left
+  const ink = (alpha = 1) => { ctx.globalAlpha = alpha; ctx.fillStyle = input.ink; ctx.strokeStyle = input.ink }
+  const mono = (px: number) => `500 ${px}px "Geist Mono"`
+
+  ctx.fillStyle = input.paper
+  ctx.fillRect(0, 0, W, 1350)
   ctx.textBaseline = 'top'
-  ctx.fillText('BUDGET BETTER', left, 78)
-  ctx.fillStyle = 'rgba(243, 235, 221, 0.55)'
-  ctx.font = '400 16px "IBM Plex Mono"'
-  ctx.fillText('52-WEEK CHALLENGE', left, 112)
 
-  ctx.fillStyle = 'rgba(243, 235, 221, 0.62)'
-  ctx.font = '400 18px "IBM Plex Mono"'
-  ctx.fillText(`01  —  SAVINGS / ${input.year}`, left, 190)
+  // masthead: heavy rule, labels, hairline
+  ink()
+  ctx.fillRect(left, 84, span, 4)
+  ctx.font = mono(20)
+  ctx.fillText('BUDGET BETTER · THE 52-WEEK LEDGER', left, 108)
   ctx.textAlign = 'right'
-  ctx.fillText(`${input.rule}  ·  ${input.currency}`, 1008, 190)
+  ctx.fillText(`${input.year} · ${input.rule}`, right, 108)
   ctx.textAlign = 'left'
+  ctx.fillRect(left, 144, span, 2)
 
-  ctx.fillStyle = 'rgba(243, 235, 221, 0.55)'
-  ctx.font = '400 18px "IBM Plex Mono"'
-  ctx.fillText('SAVED TO DATE', left, 250)
+  ink(0.56)
+  ctx.font = mono(20)
+  ctx.fillText('SAVED TO DATE', left, 214)
 
-  let size = 196
-  const fontFor = (px: number) => `700 extra-condensed ${px}px Archivo`
-  ctx.font = fontFor(size)
-  while (size > 96 && ctx.measureText(input.saved).width > 920) {
-    size -= 8
-    ctx.font = fontFor(size)
+  let size = 230
+  const serif = (px: number) => `400 ${px}px "Instrument Serif"`
+  ctx.font = serif(size)
+  while (size > 110 && ctx.measureText(input.saved).width > span - 120) {
+    size -= 10
+    ctx.font = serif(size)
   }
-  ctx.fillStyle = input.cream
-  ctx.fillText(input.saved, left, 290)
+  ink()
+  const sym = ({ EUR: '€', USD: '$', INR: '₹', PHP: '₱', NGN: '₦', GBP: '£' } as Record<string, string>)[input.currency] ?? ''
+  ctx.font = serif(Math.round(size * 0.45))
+  ctx.fillText(sym, left, 262)
+  const symW = ctx.measureText(sym).width + 10
+  ctx.font = serif(size)
+  ctx.fillText(input.saved, left + symW, 250)
 
-  const barY = 290 + size + 28
-  ctx.fillStyle = 'rgba(243, 235, 221, 0.22)'
-  roundRect(ctx, left, barY, 936, 4)
-  ctx.fill()
+  const barY = 250 + size * 0.95 + 40
+  ink(0.18)
+  ctx.fillRect(left, barY, span, 6)
   const pct = Number.parseFloat(input.progress)
-  const width = Number.isFinite(pct) ? Math.max(0, Math.min(1, pct / 100)) * 936 : 0
+  const width = Number.isFinite(pct) ? Math.max(0, Math.min(1, pct / 100)) * span : 0
+  ink()
+  ctx.fillRect(left, barY, width, 6)
+  ctx.globalAlpha = 1
   ctx.fillStyle = input.gold
-  ctx.fillRect(left, barY, width, 4)
+  ctx.fillRect(left + width, barY - 8, 2, 22)
 
-  ctx.font = '400 18px "IBM Plex Mono"'
-  ctx.fillStyle = 'rgba(243, 235, 221, 0.62)'
-  ctx.fillText('0', left, barY + 18)
-  ctx.textAlign = 'center'
-  ctx.fillText(input.progress, 540, barY + 18)
-  ctx.textAlign = 'right'
-  ctx.fillText('100', 1008, barY + 18)
-  ctx.textAlign = 'left'
+  ink(0.56)
+  ctx.font = '400 26px Geist'
+  ctx.fillText(input.progress.toLowerCase().replace(' of ', ' of '), left, barY + 30)
 
-  const statY = barY + 78
-  input.stats.slice(0, 4).forEach((stat, index) => {
-    const x = left + index * 234
-    ctx.fillStyle = 'rgba(243, 235, 221, 0.5)'
-    ctx.font = '400 16px "IBM Plex Mono"'
+  const statY = barY + 110
+  const stats = input.stats.slice(0, 4)
+  ink(0.18)
+  ctx.fillRect(left, statY - 22, span, 2)
+  ctx.fillRect(left, statY + 108, span, 2)
+  stats.forEach((stat, index) => {
+    const x = left + index * (span / 4)
+    if (index > 0) { ink(0.18); ctx.fillRect(x - 18, statY - 22, 2, 130) }
+    ink(0.56)
+    ctx.font = mono(17)
     ctx.fillText(stat.label, x, statY)
-    ctx.fillStyle = input.cream
-    ctx.font = '600 extra-condensed 42px Archivo'
-    ctx.fillText(stat.value, x, statY + 28)
+    ink()
+    ctx.font = serif(56)
+    ctx.fillText(stat.value, x, statY + 32)
   })
 
-  const gridTop = statY + 120
-  ctx.fillStyle = 'rgba(243, 235, 221, 0.62)'
-  ctx.font = '400 18px "IBM Plex Mono"'
-  ctx.fillText('02  —  WEEKS 1–52', left, gridTop)
+  const gridTop = statY + 168
+  ink()
+  ctx.font = `italic 400 44px "Instrument Serif"`
+  ctx.fillText('The year at a glance', left, gridTop)
 
   const cols = 13
-  const gap = 8
-  const gridW = 936
-  const cell = Math.floor((gridW - gap * (cols - 1)) / cols)
-  const originY = gridTop + 46
+  const gap = 6
+  const cell = Math.floor((span - gap * (cols - 1)) / cols)
+  const originY = gridTop + 74
   input.cells.forEach((status, index) => {
     const col = index % cols
     const row = Math.floor(index / cols)
     const x = left + col * (cell + gap)
     const y = originY + row * (cell + gap)
     if (status === 'paid') {
-      ctx.fillStyle = input.gold
+      ink()
       ctx.fillRect(x, y, cell, cell)
     } else if (status === 'missed') {
-      ctx.fillStyle = 'rgba(226, 182, 86, 0.28)'
-      ctx.fillRect(x, y, cell, cell)
+      ink(0.34)
+      ctx.lineWidth = 2
+      ctx.save()
+      ctx.beginPath()
+      ctx.rect(x, y, cell, cell)
+      ctx.clip()
+      for (let d = -cell; d < cell * 2; d += 10) {
+        ctx.beginPath()
+        ctx.moveTo(x + d, y + cell)
+        ctx.lineTo(x + d + cell, y)
+        ctx.stroke()
+      }
+      ctx.restore()
+      ink(0.18)
+      ctx.strokeRect(x + 1, y + 1, cell - 2, cell - 2)
     } else if (status === 'due') {
-      ctx.strokeStyle = input.cream
-      ctx.lineWidth = 3
-      ctx.strokeRect(x + 1.5, y + 1.5, cell - 3, cell - 3)
+      ctx.globalAlpha = 1
+      ctx.strokeStyle = input.gold
+      ctx.lineWidth = 4
+      ctx.strokeRect(x + 2, y + 2, cell - 4, cell - 4)
     } else {
-      ctx.strokeStyle = 'rgba(243, 235, 221, 0.28)'
+      ink(0.18)
       ctx.lineWidth = 2
       ctx.strokeRect(x + 1, y + 1, cell - 2, cell - 2)
     }
   })
 
-  ctx.fillStyle = 'rgba(243, 235, 221, 0.55)'
-  ctx.font = '400 18px "IBM Plex Mono"'
-  ctx.fillText('SWISS INSTRUMENT  ·  BUDGET BETTER', left, 1268)
+  ink()
+  ctx.fillRect(left, 1236, span, 2)
+  ink(0.56)
+  ctx.font = mono(18)
+  ctx.fillText('T.ME/BBCHALLENGE_BOT', left, 1258)
+  ctx.textAlign = 'right'
+  ctx.fillText(input.currency, right, 1258)
+  ctx.textAlign = 'left'
+  ctx.globalAlpha = 1
 
   const blob = await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((result) => (result ? resolve(result) : reject(new Error('png'))), 'image/png')

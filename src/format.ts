@@ -70,7 +70,7 @@ export function daysBetween(from: Date, to: Date): number {
 }
 
 function tidy(value: string): string {
-  return value.replace(/[,.]/g, '').replace(/\s+/g, ' ').trim().toUpperCase()
+  return value.replace(/[,.]/g, '').replace(/\s+/g, ' ').trim()
 }
 
 export function formatDay(date: Date): string {

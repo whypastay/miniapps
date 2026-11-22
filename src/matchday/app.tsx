@@ -1,15 +1,15 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
 import { formatDay, formatRemain, pad2, parseISODate } from '../format.ts'
 import { haptic } from '../telegram.ts'
-import { Empty, Section, Shell, Stats } from '../ui.tsx'
+import { Empty, Pitch, Section, Shell } from '../ui.tsx'
 import { createMatchdayRepository, impliedResult, picksMade } from './demo.ts'
 import type { MatchdayRepository, MatchdaySnapshot, Pick, ResultPick } from './types.ts'
 
 const TABS = [
-  { id: 'picks', label: 'Picks' },
-  { id: 'table', label: 'Table' },
-  { id: 'league', label: 'League' },
-  { id: 'settings', label: 'Settings' },
+  { id: 'picks', label: 'Picks', icon: 'ledger' as const },
+  { id: 'table', label: 'Table', icon: 'bars' as const },
+  { id: 'league', label: 'League', icon: 'people' as const },
+  { id: 'settings', label: 'Settings', icon: 'gear' as const },
 ]
 
 export function MatchdayApp() {
@@ -34,7 +34,7 @@ export function MatchdayApp() {
 
   if (!snap) {
     return (
-      <Shell theme="matchday" title="Matchday" tabs={TABS} active={tab} home="table" onTab={setTab} ready={false} screen="loading">
+      <Shell theme="matchday" title="Matchday" tabs={TABS} active={tab} home="table" onTab={setTab} ready={false} screen="loading" mast={['Matchday', 'Reading']}>
         <p class="loading">Reading the league</p>
       </Shell>
     )
@@ -42,25 +42,35 @@ export function MatchdayApp() {
 
   if (!snap.connected) {
     return (
-      <Shell theme="matchday" title="Matchday" tabs={TABS} active={tab} home="table" onTab={setTab} ready screen="waiting" actions={[{ label: 'WAITING ON THE BOT', disabled: true, mark: 'none' }]}>
+      <Shell theme="matchday" title="Matchday" tabs={TABS} active={tab} home="table" onTab={setTab} ready screen="waiting" mast={['Friends league', 'Waiting for the bot']} actions={[{ label: 'Waiting on the bot', disabled: true, mark: 'none' }]}>
         {tab === 'picks' ? (
-          <Section index="01" title="PICKS">
-            <Empty title="NO FIXTURES" body="THE BOT PUBLISHES THE SLATE WHEN THE GAMEWEEK OPENS." />
+          <Section title="Picks">
+            <Empty title="No fixtures yet" body="The bot publishes the slate when the gameweek opens." />
           </Section>
         ) : tab === 'league' ? (
-          <Section index="01" title="LEAGUE">
-            <Empty title="NO ROOM" body="THE LEAGUE OPENS FROM THE BOT." />
+          <Section title="League">
+            <Empty title="No room yet" body="The league opens from the bot." />
           </Section>
         ) : tab === 'settings' ? (
-          <Section index="01" title="RECORD" aside="WAITING">
+          <Section title="Record" aside="Waiting">
             <p class="note">Nothing is stored until the bot connects the league.</p>
           </Section>
         ) : (
-          <Section index="01" title="SUNDAY SQUAD">
-            <div class="kicker">Your position</div>
-            <p class="hero-blank">—</p>
-            <p class="note">The table opens from the bot.</p>
-          </Section>
+          <>
+            <section class="block hero">
+              <Pitch />
+              <div class="kicker">Your position</div>
+              <div class="position">
+                <p class="hero-blank">—</p>
+                <div class="ctx">of your friends<br /><span class="move flat">The table opens from the bot</span></div>
+              </div>
+            </section>
+            <div class="lock"><span>Next picks lock in</span><b>-- : -- : --</b></div>
+            <Section title="The table" aside="Pts · exact score = 3">
+              <div class="tbl-head"><span>#</span><span /><span>Player</span><span class="r">Pts</span></div>
+              <Empty title="No table yet" body="The bot posts the first table after gameweek one." />
+            </Section>
+          </>
         )}
       </Shell>
     )
@@ -100,11 +110,11 @@ export function MatchdayApp() {
   }
 
   const actions = tab === 'table'
-    ? [{ label: `MAKE GW${snap.gameweek.picking} PICKS`, aside: `${made}/${total}`, onClick: () => setTab('picks') }]
+    ? [{ label: `Make your gameweek ${snap.gameweek.picking} picks`, aside: `${made}/${total}`, onClick: () => setTab('picks') }]
     : tab === 'picks'
-      ? [{ label: locked ? 'PICKS LOCKED' : 'TO THE TABLE', aside: `${made}/${total}`, disabled: locked, onClick: () => setTab('table') }]
+      ? [{ label: locked ? 'Picks locked' : 'To the table', aside: `${made}/${total}`, disabled: locked, onClick: () => setTab('table') }]
       : tab === 'league'
-        ? [{ label: copied ? 'CODE COPIED' : 'COPY THE CODE', onClick: () => {
+        ? [{ label: copied ? 'Code copied' : 'Copy the code', onClick: () => {
             void navigator.clipboard.writeText(`${snap.league.name} · code ${snap.league.code}`).then(() => {
               setCopied(true)
               haptic('success')
@@ -114,49 +124,42 @@ export function MatchdayApp() {
         : []
 
   return (
-    <Shell theme="matchday" title="Matchday" tabs={TABS} active={tab} home="table" onTab={setTab} actions={actions} ready>
+    <Shell theme="matchday" title="Matchday" tabs={TABS} active={tab} home="table" onTab={setTab} actions={actions} ready mast={[snap.league.name, `Gameweek ${snap.gameweek.played} of ${snap.gameweek.season}`]}>
       {tab === 'table' ? (
         <>
-          <Section index="01" title={snap.league.name.toUpperCase()} aside={`GW ${snap.gameweek.played} / ${snap.gameweek.season}`}>
+          <section class="block hero">
+            <Pitch />
             <div class="kicker">Your position</div>
             <div class="position">
-              <div class="hero-lockup">
-                <span class="hero-num" data-field="position">{pad2(rank)}</span>
-                <span class="hero-denom">/{pad2(snap.table.length)}</span>
-              </div>
-              <div class="plate">
-                <i class="plate-stripes" aria-hidden="true" />
-                <div>
-                  <div class="plate-k">{you.move === 0 ? 'HELD' : `${Math.abs(you.move)} PLACES`}</div>
-                  <div class="plate-v">{you.points} PTS</div>
-                </div>
+              <p class="hero-num" data-field="position">{rank}<span class="ord">{ordinal(rank)}</span></p>
+              <div class="ctx">
+                of {snap.table.length} friends<br />
+                <span class={you.move > 0 ? 'move up' : you.move < 0 ? 'move down' : 'move flat'}>
+                  {you.move === 0 ? '— held this week' : `${you.move > 0 ? '▲' : '▼'} ${Math.abs(you.move)} this week`}
+                </span>
               </div>
             </div>
-            <Stats
-              columns={2}
-              items={[
-                { label: `GW${snap.gameweek.picking} picks lock in`, value: locked ? 'LOCKED' : remain, field: 'lock' },
-                { label: 'Picks made', value: `${made}/${total}`, field: 'picks' },
-              ]}
-            />
-          </Section>
-          <Section index="02" title="TABLE" aside={`EXACT SCORE = ${snap.gameweek.exactScorePoints} PTS`}>
-            {shown.map((row, index) => (
-              <article class={row.isYou ? 'row is-you' : 'row'} key={row.id}>
-                <span class="row-idx">{pad2(index + 1)}</span>
-                <span class="row-title">{row.isYou ? snap.settings.displayName : row.name}</span>
-                <span class="row-side">
-                  {row.move !== 0 ? <span class={row.move > 0 ? 'move up' : 'move down'}>{row.move > 0 ? `+${row.move}` : `−${Math.abs(row.move)}`}</span> : null}
-                  <span class="row-val">{row.points}</span>
-                </span>
-              </article>
-            ))}
+          </section>
+          <div class="lock"><span>Gameweek {snap.gameweek.picking} picks lock in</span><b data-field="lock">{locked ? 'Locked' : remain.split(':').join(' : ')}</b></div>
+          <Section title="The table" aside={`Pts · exact score = ${snap.gameweek.exactScorePoints}`}>
+            <div class="tbl-head"><span>#</span><span /><span>Player</span><span class="r">Pts</span></div>
+            {shown.map((row, index) => {
+              const name = row.isYou ? snap.settings.displayName : row.name
+              return (
+                <article class={row.isYou ? 'standing is-you' : 'standing'} key={row.id}>
+                  <span class="rk">{index + 1}</span>
+                  <span class={row.move > 0 ? 'move up' : row.move < 0 ? 'move down' : 'move flat'}>{row.move > 0 ? `▲${row.move}` : row.move < 0 ? `▼${Math.abs(row.move)}` : '—'}</span>
+                  <span class="who"><span class="av">{initials(name)}</span><span>{name}</span></span>
+                  <span class="pt">{row.points}</span>
+                </article>
+              )
+            })}
             {hidden.length > 0 && !open ? (
               <div class="more-row">
                 <button type="button" onClick={() => setOpen(true)}>
-                  +{hidden.length} MORE · {hidden.map((row) => row.name.split(' ')[0].toUpperCase()).join(', ')}
+                  + {hidden.length} more · {hidden.map((row) => row.name.split(' ')[0]).join(', ')}
                 </button>
-                <button type="button" class="invite" onClick={() => setTab('league')}>INVITE →</button>
+                <button type="button" class="invite" onClick={() => setTab('league')}>Invite a friend ↗</button>
               </div>
             ) : null}
           </Section>
@@ -164,17 +167,17 @@ export function MatchdayApp() {
       ) : null}
 
       {tab === 'picks' ? (
-        <Section index="01" title={`GW${snap.gameweek.picking}`} aside={locked ? 'LOCKED' : remain}>
+        <Section title={`Gameweek ${snap.gameweek.picking}`} aside={locked ? 'Locked' : remain}>
           <p class="note">Correct result {snap.gameweek.resultPoints} pt. Exact score {snap.gameweek.exactScorePoints} pts. {locked ? 'The window is shut.' : 'Picks stay open until the clock hits zero.'}</p>
           {snap.fixtures.map((fixture, index) => {
             const pick = snap.picks.find((row) => row.fixtureId === fixture.id)
             return (
               <article class={locked ? 'fixture is-locked' : 'fixture'} key={fixture.id}>
                 <div class="fixture-top">
-                  <h3>{pad2(index + 1)}  {fixture.home}</h3>
+                  <h3><span class="row-idx">{pad2(index + 1)}</span>{fixture.home}</h3>
                   <span class="when">{kickLabel(fixture.kickoff)}</span>
                 </div>
-                <div class="row-title">{fixture.away}</div>
+                <div class="away">{fixture.away}</div>
                 <div class="picks">
                   {(['1', 'X', '2'] as const).map((result) => (
                     <button
@@ -204,16 +207,16 @@ export function MatchdayApp() {
 
       {tab === 'league' ? (
         <>
-          <Section index="01" title={snap.league.name.toUpperCase()} aside={snap.league.code}>
+          <Section title={snap.league.name} plain aside={snap.league.code}>
             <div class="kicker">{snap.league.seasonLabel}</div>
             <p class="hero-num sm">{snap.league.code}</p>
             <p class="note">{snap.table.length} players · GW {snap.gameweek.played} / {snap.gameweek.season}</p>
           </Section>
-          <Section index="02" title="SCORING">
+          <Section title="Scoring">
             <article class="row"><span class="row-idx">01</span><span class="row-title">Correct result</span><span class="row-val">{snap.gameweek.resultPoints}</span></article>
             <article class="row"><span class="row-idx">02</span><span class="row-title">Exact score</span><span class="row-val">{snap.gameweek.exactScorePoints}</span></article>
           </Section>
-          <Section index="03" title="THE ROOM" aside={`${snap.table.length} PLAYERS`}>
+          <Section title="The room" aside={`${snap.table.length} players`}>
             {snap.table.map((row, index) => (
               <article class={row.isYou ? 'row is-you' : 'row'} key={row.id}>
                 <span class="row-idx">{pad2(index + 1)}</span>
@@ -227,7 +230,7 @@ export function MatchdayApp() {
 
       {tab === 'settings' ? (
         <>
-          <Section index="01" title="YOU">
+          <Section title="You">
             <label class="field">
               <span class="k">Display name</span>
               <input
@@ -260,10 +263,10 @@ export function MatchdayApp() {
               </button>
             </div>
           </Section>
-          <Section index="02" title="RECORD" aside="THIS DEVICE">
+          <Section title="Record" aside="This device">
             <p class="note">The league table will live on the bot. Picks here are a local copy.</p>
           </Section>
-          <Section index="03" title="RESET">
+          <Section title="Reset">
             {armed ? (
               <div class="confirm">
                 <p class="note">Puts the demo picks and the table back to the opening slate.</p>
@@ -295,4 +298,16 @@ export function MatchdayApp() {
 function kickLabel(stamp: string): string {
   const [date, time] = stamp.split('T')
   return `${formatDay(parseISODate(date || '2026-01-01'))} · ${time || ''}`
+}
+
+function ordinal(n: number): string {
+  const tens = n % 100
+  if (tens >= 11 && tens <= 13) return 'th'
+  return ({ 1: 'st', 2: 'nd', 3: 'rd' } as Record<number, string>)[n % 10] ?? 'th'
+}
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  const letters = parts.length > 1 ? parts[0][0] + parts[parts.length - 1][0] : (parts[0] ?? '?').slice(0, 2)
+  return letters.toUpperCase()
 }

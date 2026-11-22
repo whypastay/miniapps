@@ -132,9 +132,9 @@ export function ruleChip(state: BudgetState): string {
 }
 
 export function ruleLine(state: BudgetState): string {
-  if (state.variant === 'custom') return 'EVERY WEEK SAVES THE SAME AMOUNT.'
-  if (state.variant === 'reverse') return 'WEEK N SAVES (53 − N) × THE UNIT.'
-  return 'WEEK N SAVES N × THE UNIT.'
+  if (state.variant === 'custom') return 'Every week saves the same amount.'
+  if (state.variant === 'reverse') return 'Week n saves (53 − n) × the unit.'
+  return 'Week n saves n × the unit.'
 }
 
 export function stepUnit(value: number, direction: 1 | -1): number {

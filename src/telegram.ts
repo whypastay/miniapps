@@ -83,10 +83,15 @@ export function inTelegram(): boolean {
 
 function applyInsets(): void {
   const tg = getWebApp()
-  const area = tg?.contentSafeAreaInset ?? tg?.safeAreaInset
+  // contentSafeAreaInset is measured inside safeAreaInset: the device notch first, then Telegram's own controls.
+  const safe = tg?.safeAreaInset
+  const content = tg?.contentSafeAreaInset
   const root = document.documentElement
-  root.style.setProperty('--inset-top', `${area?.top ?? 0}px`)
-  root.style.setProperty('--inset-bottom', `${area?.bottom ?? 0}px`)
+  root.style.setProperty('--safe-top', `${safe?.top ?? 0}px`)
+  root.style.setProperty('--chrome-top', `${content?.top ?? 0}px`)
+  root.style.setProperty('--inset-bottom', `${(safe?.bottom ?? 0) + (content?.bottom ?? 0)}px`)
+  root.style.setProperty('--inset-left', `${(safe?.left ?? 0) + (content?.left ?? 0)}px`)
+  root.style.setProperty('--inset-right', `${(safe?.right ?? 0) + (content?.right ?? 0)}px`)
 }
 
 export function bootTelegram(theme: Theme): void {
@@ -94,9 +99,9 @@ export function bootTelegram(theme: Theme): void {
   if (!tg || !inTelegram()) return
   tg.ready()
   tg.expand()
-  try { tg.setHeaderColor?.(theme.bg) } catch { /* older clients */ }
-  try { tg.setBackgroundColor?.(theme.bg) } catch { /* older clients */ }
-  try { tg.setBottomBarColor?.(theme.bg) } catch { /* optional */ }
+  try { tg.setHeaderColor?.(theme.paper) } catch { /* older clients */ }
+  try { tg.setBackgroundColor?.(theme.paper) } catch { /* older clients */ }
+  try { tg.setBottomBarColor?.(theme.paper) } catch { /* optional */ }
   try { tg.disableVerticalSwipes?.() } catch { /* optional */ }
   if (!tg.isFullscreen && tg.requestFullscreen) {
     try {
@@ -217,4 +222,10 @@ export function sharePreparedMessage(id: string): Promise<boolean> {
       resolve(false)
     }
   })
+}
+
+/** Telegram fullscreen: the client draws its own Close and menu pills over the top of the app. */
+export function telegramFullscreen(): boolean {
+  const tg = getWebApp()
+  return Boolean(tg && inTelegram() && tg.isFullscreen)
 }

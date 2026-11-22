@@ -51,7 +51,7 @@ await openGame.close()
 
 const waiting = await open('/santa/')
 check('waiting screen', (await waiting.$eval('[data-screen]', (el) => el.getAttribute('data-screen'))) === 'waiting')
-check('waiting has bot action', (await text(waiting)).includes('OPEN MY GAMES IN THE BOT'))
+check('waiting has bot action', /open my games in the bot/i.test(await text(waiting)))
 await waiting.screenshot({ path: `${out}/${prefix}-waiting.png` })
 await waiting.close()
 

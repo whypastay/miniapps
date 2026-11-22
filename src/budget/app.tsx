@@ -4,7 +4,7 @@ import { demoRequested } from '../mode.ts'
 import { loadRecord, placeLabel, readLocal, saveRecord, type RecordPlace } from '../storage.ts'
 import { bindMainButton, haptic, shareWithFriend } from '../telegram.ts'
 import { themes } from '../theme.ts'
-import { Empty, Section, Shell, Stats, type Action } from '../ui.tsx'
+import { Check, Empty, Section, Shell, Stats, sentence, type Action } from '../ui.tsx'
 import {
   BUDGET_KEY,
   createEmpty,
@@ -26,10 +26,10 @@ import {
 import { downloadBlob, progressCaption, renderCard, shareCard, type ShareResult } from './share.ts'
 
 const TABS = [
-  { id: 'ledger', label: 'Ledger' },
-  { id: 'history', label: 'History' },
-  { id: 'circle', label: 'Circle' },
-  { id: 'settings', label: 'Settings' },
+  { id: 'ledger', label: 'Ledger', icon: 'ledger' as const },
+  { id: 'history', label: 'History', icon: 'bars' as const },
+  { id: 'circle', label: 'Circle', icon: 'people' as const },
+  { id: 'settings', label: 'Settings', icon: 'gear' as const },
 ]
 
 const SHARE_COPY: Record<ShareResult, string> = {
@@ -96,19 +96,19 @@ export function BudgetApp() {
       return bindMainButton({
         visible: false,
         text: 'CONFIRM RESET',
-        color: theme.gold,
-        textColor: theme.onGold,
+        color: theme.ink,
+        textColor: theme.paper,
         onClick: () => undefined,
       })
     }
     return bindMainButton({
       visible: true,
       text: 'CONFIRM RESET',
-      color: theme.gold,
-      textColor: theme.onGold,
+      color: theme.ink,
+      textColor: theme.paper,
       onClick: () => commit(resetState(state)),
     })
-  }, [tab, armed, state, theme.gold, theme.onGold])
+  }, [tab, armed, state, theme.ink, theme.paper])
 
   useEffect(() => {
     if (!state || tab !== 'circle') return
@@ -116,8 +116,8 @@ export function BudgetApp() {
     let url = ''
     const view = derive(state)
     void renderCard({
-      bg: theme.bg,
-      cream: theme.cream,
+      paper: theme.paper,
+      ink: theme.ink,
       gold: theme.gold,
       year: state.year,
       rule: ruleChip(state),
@@ -145,7 +145,7 @@ export function BudgetApp() {
       cancel = true
       if (url) URL.revokeObjectURL(url)
     }
-  }, [tab, state, theme.bg, theme.cream, theme.gold])
+  }, [tab, state, theme.paper, theme.ink, theme.gold])
 
   function onCell(week: number) {
     if (!state) return
@@ -159,8 +159,8 @@ export function BudgetApp() {
     if (!state || !ledger) return
     setNote('RENDERING')
     const blob = card?.blob ?? (await renderCard({
-      bg: theme.bg,
-      cream: theme.cream,
+      paper: theme.paper,
+      ink: theme.ink,
       gold: theme.gold,
       year: state.year,
       rule: ruleChip(state),
@@ -195,7 +195,7 @@ export function BudgetApp() {
 
   if (!ready) {
     return (
-      <Shell theme="budget" title="Budget Better" tabs={[]} active="ledger" home="ledger" onTab={setTab} ready={false} screen="loading">
+      <Shell theme="budget" title="Budget Better" tabs={[]} active="ledger" home="ledger" onTab={setTab} ready={false} screen="loading" mast={['The 52-week ledger', 'Reading']}>
         <p class="loading">Reading the ledger</p>
       </Shell>
     )
@@ -212,35 +212,44 @@ export function BudgetApp() {
     onCell(ledger.nextWeek)
   }, () => setTab('circle'), onShare, onDownload, shareWithFriend)
 
+  const mast: [string, string] = [`The 52-week ledger`, `${state.year} · ${chip}`]
+  const todayAt = Math.min(100, Math.max(0, ((ledger.currentWeek - 0.5) / 52) * 100))
+
   return (
-    <Shell theme="budget" title="Budget Better" tabs={TABS} active={tab} home="ledger" onTab={setTab} actions={actions} ready={ready} screen="ledger">
+    <Shell theme="budget" title="Budget Better" tabs={TABS} active={tab} home="ledger" onTab={setTab} actions={actions} ready={ready} screen="ledger" mast={mast}>
       {tab === 'ledger' ? (
         <>
-          <Section index="01" title={`SAVINGS / ${state.year}`} aside={chip}>
+          <section class="block hero">
             <div class="kicker">Saved to date</div>
-            <p class={`hero-num ${scale}`} data-field="saved">{savedText}</p>
-            <div class="track-wrap">
-              <div class="track"><span style={{ width: `${Math.min(100, ledger.progress)}%` }} /></div>
-              <div class="track-meta">
-                <span>0</span>
-                <span class="mid" data-field="progress">{progressLabel(ledger, state.currency)}</span>
-                <span>100</span>
-              </div>
+            <p class={`hero-num ${scale}`}>
+              <sup>{symbol(state.currency)}</sup><span data-field="saved">{savedText}</span>{scale ? null : <span class="c">.00</span>}
+            </p>
+            <div class="of">
+              <span>Goal <b>{formatMoney(ledger.goal, state.currency)}</b> · {sentence(ruleChip(state))}</span>
+              <b data-field="progress">{ledger.progress.toFixed(1)}%</b>
             </div>
-            <Stats
-              columns={4}
-              items={[
-                { label: 'Week', value: String(ledger.currentWeek), unit: '/52', field: 'week' },
-                { label: 'Streak', value: String(ledger.streak), unit: 'wk', field: 'streak' },
-                { label: 'Missed', value: String(ledger.missed), unit: 'wk', field: 'missed' },
-                { label: 'Next', value: ledger.nextWeek ? formatMoney(ledger.nextAmount, state.currency) : '—', field: 'next' },
-              ]}
-            />
-          </Section>
-          <Section index="02" title="WEEKS 1–52" aside={<Legend />}>
+            <div class="track">
+              <span style={{ width: `${Math.min(100, ledger.progress)}%` }} />
+              <u style={{ left: `${todayAt}%` }} />
+            </div>
+            <div class="track-meta">
+              <span>Wk 01</span>
+              <span class="mid">▲ Today · wk {pad2(ledger.currentWeek)}</span>
+              <span>Wk 52</span>
+            </div>
+          </section>
+          <Stats
+            columns={3}
+            items={[
+              { label: 'Week', value: String(ledger.currentWeek), unit: '/ 52', field: 'week' },
+              { label: 'Streak', value: String(ledger.streak), unit: ledger.streak === 1 ? 'week' : 'weeks', field: 'streak' },
+              { label: 'Next deposit', value: ledger.nextWeek ? formatMoney(ledger.nextAmount, state.currency) : '—', unit: ledger.nextWeek ? `wk ${ledger.nextWeek}` : undefined, field: 'next' },
+            ]}
+          />
+          <Section title="The year at a glance" aside={<Legend />}>
             <div class="weeks">
               {[0, 1, 2, 3].flatMap((row) => [
-                <span class="row-label" key={`l${row}`}>{pad2(row + 1)}</span>,
+                <span class="row-label" key={`l${row}`}>Q{row + 1}</span>,
                 ...Array.from({ length: 13 }, (_, column) => {
                   const week = row * 13 + column + 1
                   const entry = ledger.entries[week - 1]
@@ -253,19 +262,20 @@ export function BudgetApp() {
                       aria-pressed={entry.status === 'paid'}
                       aria-label={`Week ${week}, ${entry.status}, ${formatMoney(entry.amount, state.currency)}`}
                       onClick={() => onCell(week)}
-                    />
+                    >
+                      {week}
+                    </button>
                   )
                 }),
               ])}
             </div>
-            {focused ? (
-              <div class="readout">
-                Week {pad2(focused.week)} · {focused.timing} · {formatMoney(focused.amount, state.currency)}
-              </div>
-            ) : null}
+            <div class="readout">
+              <span>{focused ? `Week ${pad2(focused.week)} · ${focused.timing} · ${formatMoney(focused.amount, state.currency)}` : 'Tap a week to mark it'}</span>
+              <span data-field="missed">{ledger.missed} missed</span>
+            </div>
           </Section>
-          <Section index="03" title="RECENT" aside={<button type="button" class="text-btn" onClick={() => setTab('history')}>ALL →</button>}>
-            {recent.length === 0 ? <Empty title="NO MARKS" body="TAP A WEEK TO LOG IT." /> : recent.map((entry) => (
+          <Section title="Recent entries" aside={<button type="button" class="text-btn" onClick={() => setTab('history')}>All →</button>}>
+            {recent.length === 0 ? <Empty title="No marks yet" body="Tap a week in the grid, or log this week below." /> : recent.map((entry) => (
               <Entry key={entry.week} entry={entry} currency={state.currency} onClick={() => setTab('history')} />
             ))}
           </Section>
@@ -276,16 +286,16 @@ export function BudgetApp() {
 
       {tab === 'circle' ? (
         <>
-          <Section index="01" title="PROGRESS CARD" aside="PNG">
+          <Section title="Progress card" aside="PNG · 1080×1350">
             <p class="note">A still of the ledger, rendered on this device.</p>
             <div class="card-frame">
-              {card ? <img src={card.url} alt="Budget Better progress card" /> : <p class="loading">RENDERING THE CARD</p>}
+              {card ? <img src={card.url} alt="Budget Better progress card" /> : <p class="loading">Rendering the card</p>}
             </div>
             {note ? <p class="status" data-field="share-note">{note}</p> : null}
           </Section>
-          <Section index="02" title="THE LINE">
+          <Section title="The line">
             <p class="copy">{progressCaption(savedText, progressLabel(ledger, state.currency), ledger.currentWeek)}</p>
-            <button type="button" class="text-btn" onClick={() => void onCopy()}>COPY LINE</button>
+            <button type="button" class="text-btn" onClick={() => void onCopy()}>Copy line</button>
           </Section>
         </>
       ) : null}
@@ -317,15 +327,15 @@ function actionsFor(
   invite: () => void,
 ): Action[] {
   if (tab === 'ledger') {
-    if (!ledger.nextWeek) return [{ label: 'CHALLENGE COMPLETE', disabled: true, mark: 'none' }]
-    return [{ label: `LOG WEEK ${ledger.nextWeek}`, aside: formatMoney(ledger.nextAmount, currency), onClick: log }]
+    if (!ledger.nextWeek) return [{ label: 'Challenge complete', disabled: true, mark: 'none' }]
+    return [{ label: `Log week ${ledger.nextWeek}`, aside: formatMoney(ledger.nextAmount, currency), onClick: log }]
   }
-  if (tab === 'history') return [{ label: 'SHARE PROGRESS', onClick: toCircle }]
+  if (tab === 'history') return [{ label: 'Share progress', onClick: toCircle }]
   if (tab === 'circle') {
     return [
-      { label: 'SHARE THE CARD', aside: 'PNG', onClick: share },
-      { label: 'SHARE WITH A FRIEND', onClick: invite, tone: 'ghost' },
-      { label: 'DOWNLOAD', aside: 'PNG', onClick: download, tone: 'ghost' },
+      { label: 'Share the card', aside: 'PNG', onClick: share },
+      { label: 'Share with a friend', onClick: invite, tone: 'ghost' },
+      { label: 'Download PNG', onClick: download, tone: 'ghost' },
     ]
   }
   return []
@@ -334,9 +344,9 @@ function actionsFor(
 function Legend() {
   return (
     <span class="legend">
-      <span><i class="swatch paid" /> Paid</span>
-      <span><i class="swatch due" /> Due</span>
-      <span><i class="swatch missed" /> Missed</span>
+      <span><i class="swatch paid" />paid</span>
+      <span><i class="swatch due" />due</span>
+      <span><i class="swatch missed" />missed</span>
     </span>
   )
 }
@@ -346,18 +356,18 @@ function Entry(props: { entry: WeekEntry; currency: Currency; onClick: () => voi
   const when = entry.paidOn ? formatDay(parseISODate(entry.paidOn)) : entry.dueLabel
   return (
     <button type="button" class="entry" onClick={props.onClick}>
-      <span class="entry-id">W{pad2(entry.week)}</span>
+      <span class="entry-id">{pad2(entry.week)}</span>
       <span>
         <span class="entry-amt">{formatMoney(entry.amount, props.currency)}</span>
-        <span class="entry-sub">{when} · {entry.timing}</span>
+        <span class="entry-sub">{when} · {entry.timing.toLowerCase()}</span>
       </span>
-      <span class="entry-mark">{entry.status === 'paid' ? '✓' : ''}</span>
+      <span class="entry-mark">{entry.status === 'paid' ? <Check /> : <span class="k">{entry.status}</span>}</span>
     </button>
   )
 }
 
 function History(props: { entries: WeekEntry[]; currency: Currency; onToggle: (week: number) => void }) {
-  if (props.entries.length === 0) return <Empty title="NO MARKS" body="THE GRID IS CLEAR. LOG A WEEK FROM THE LEDGER." />
+  if (props.entries.length === 0) return <Empty title="No marks" body="The grid is clear. Log a week from the ledger." />
   const groups: Array<{ label: string; rows: WeekEntry[] }> = []
   for (const entry of props.entries) {
     const label = formatMonth(parseISODate(entry.due))
@@ -367,7 +377,7 @@ function History(props: { entries: WeekEntry[]; currency: Currency; onToggle: (w
   }
   return (
     <>
-      <Section index="01" title="MARKS" aside={`${props.entries.filter((entry) => entry.status === 'paid').length} PAID`}>
+      <Section title="Marks" aside={`${props.entries.filter((entry) => entry.status === 'paid').length} paid`}>
         <p class="note">Tap a row to mark it paid or clear it.</p>
       </Section>
       {groups.map((group) => (
@@ -401,8 +411,9 @@ function Onboarding(props: { onOpen: (next: BudgetState) => void }) {
       home="ledger"
       onTab={() => undefined}
       screen="onboarding"
+      mast={['The 52-week ledger', 'New ledger']}
       actions={[{
-        label: 'OPEN THE LEDGER',
+        label: 'Open the ledger',
         testId: 'open-ledger',
         onClick: () => {
           haptic('success')
@@ -410,7 +421,7 @@ function Onboarding(props: { onOpen: (next: BudgetState) => void }) {
         },
       }]}
     >
-      <Section index="01" title="RULE">
+      <Section title="The rule">
         <div class="choices">
           {(['classic', 'reverse', 'custom'] as const).map((item) => (
             <button key={item} type="button" class="choice" aria-pressed={variant === item} onClick={() => { haptic('select'); setVariant(item) }}>
@@ -439,7 +450,7 @@ function Onboarding(props: { onOpen: (next: BudgetState) => void }) {
         )}
         <p class="rule" data-field="preview">{ruleLine(draft)} Week {preview.currentWeek} saves {formatMoney(sample, currency)}. The year comes to {formatMoney(preview.goal, currency)}.</p>
       </Section>
-      <Section index="02" title="CURRENCY">
+      <Section title="Currency">
         <div class="currencies">
           {CURRENCIES.map((code) => (
             <button key={code} type="button" class="choice" aria-pressed={currency === code} onClick={() => { haptic('select'); setCurrency(code) }}>
@@ -448,7 +459,7 @@ function Onboarding(props: { onOpen: (next: BudgetState) => void }) {
           ))}
         </div>
       </Section>
-      <Section index="03" title="START">
+      <Section title="Start">
         <label class="field">
           <span class="k">Start date</span>
           <input
@@ -485,7 +496,7 @@ function Settings(props: {
   }
   return (
     <>
-      <Section index="01" title="RULE">
+      <Section title="The rule">
         <div class="choices">
           {(['classic', 'reverse', 'custom'] as const).map((variant) => (
             <button key={variant} type="button" class="choice" aria-pressed={state.variant === variant} onClick={() => setVariant(variant)}>
@@ -514,7 +525,7 @@ function Settings(props: {
         )}
         <p class="rule">{ruleLine(state)} Week {props.ledgerWeek} saves {formatMoney(sample, state.currency)}. The year comes to {formatMoney(props.ledgerGoal, state.currency)}.</p>
       </Section>
-      <Section index="02" title="CURRENCY">
+      <Section title="Currency">
         <div class="currencies">
           {CURRENCIES.map((code) => (
             <button
@@ -529,7 +540,7 @@ function Settings(props: {
           ))}
         </div>
       </Section>
-      <Section index="03" title="CALENDAR">
+      <Section title="Calendar">
         <div class="field">
           <span class="k">Year</span>
           <span class="stepper">
@@ -551,10 +562,10 @@ function Settings(props: {
         </label>
         <p class="note">Current week follows the start date. Marks stay. Amounts follow the rule.</p>
       </Section>
-      <Section index="04" title="RECORD" aside={placeLabel(props.place)}>
+      <Section title="Record" aside={placeLabel(props.place)}>
         <p class="note">Outside Telegram the ledger stays on this device. Inside Telegram it also writes to CloudStorage.</p>
       </Section>
-      <Section index="05" title="RESET">
+      <Section title="Reset">
         {props.armed ? (
           <div class="confirm">
             <p class="note">Clears every mark and starts the calendar on today. The rule and currency stay.</p>

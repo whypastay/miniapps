@@ -1,16 +1,16 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
 import { formatMoney, formatShort, pad2, parseISODate } from '../format.ts'
 import { haptic } from '../telegram.ts'
-import { Empty, Section, Shell } from '../ui.tsx'
+import { Empty, Seal, Section, Shell } from '../ui.tsx'
 import { LiveSanta, openBot } from './live.tsx'
 import { createSantaRepository } from './repo.ts'
 import type { SantaRepository, SantaSnapshot, WishlistItem } from './types.ts'
 
 const TABS = [
-  { id: 'game', label: 'Game' },
-  { id: 'wishlist', label: 'Wishlist' },
-  { id: 'group', label: 'Group' },
-  { id: 'settings', label: 'Settings' },
+  { id: 'game', label: 'Game', icon: 'gift' as const },
+  { id: 'wishlist', label: 'Wishlist', icon: 'list' as const },
+  { id: 'group', label: 'Group', icon: 'people' as const },
+  { id: 'settings', label: 'Settings', icon: 'gear' as const },
 ]
 
 export function SantaApp() {
@@ -29,7 +29,7 @@ export function SantaApp() {
 
   if (!snap) {
     return (
-      <Shell theme="santa" title="Secret Santa" tabs={TABS} active={tab} home="game" onTab={setTab} ready={false} screen="loading">
+      <Shell theme="santa" title="Secret Santa" tabs={TABS} active={tab} home="game" onTab={setTab} ready={false} screen="loading" mast={['Secret Santa', 'Reading']}>
         <p class="loading">Reading the draw</p>
       </Shell>
     )
@@ -41,25 +41,36 @@ export function SantaApp() {
 
   if (!snap.connected) {
     return (
-      <Shell theme="santa" title="Secret Santa" tabs={TABS.filter((item) => item.id !== 'settings')} active={tab} home="game" onTab={setTab} ready screen="waiting" actions={[{ label: 'OPEN MY GAMES IN THE BOT', testId: 'open-bot', onClick: () => openBot('app') }]}>
+      <Shell theme="santa" title="Secret Santa" tabs={TABS.filter((item) => item.id !== 'settings')} active={tab} home="game" onTab={setTab} ready screen="waiting" mast={['Secret Santa', 'Waiting for the bot']} actions={[{ label: 'Open my games in the bot', testId: 'open-bot', onClick: () => openBot('app') }]}>
         {tab === 'wishlist' ? (
-          <Section index="01" title="YOUR LIST">
-            <Empty title="NO GAME OPEN" body="OPEN THE APP FROM YOUR GAME IN THE BOT CHAT." />
+          <Section title="Your wishlist">
+            <Empty title="No game open" body="Open the app from your game in the bot chat." />
           </Section>
         ) : tab === 'group' ? (
-          <Section index="01" title="THE ROOM">
-            <Empty title="NO NAMES" body="THE ROOM APPEARS WHEN YOU OPEN A GAME FROM THE BOT." />
+          <Section title="The room">
+            <Empty title="No names yet" body="The room appears when you open a game from the bot." />
           </Section>
         ) : tab === 'settings' ? (
-          <Section index="01" title="RECORD" aside="WAITING">
+          <Section title="Record" aside="Waiting">
             <p class="note">Nothing is stored until the bot connects the group.</p>
           </Section>
         ) : (
-          <Section index="01" title="THE DRAW">
-            <div class="kicker">Your recipient</div>
-            <p class="hero-blank">—</p>
-            <p class="note">Open the app from your game in the chat with the bot: tap “Open in app” under the game, or send /app.</p>
-          </Section>
+          <>
+            <Seal mark="pp">
+              <div class="kicker">Your recipient</div>
+              <h2 class="name blank">—</h2>
+              <div class="meta">
+                <div><div class="k">Budget</div><div class="v">—</div></div>
+                <div><div class="k">Exchange</div><div class="v">—</div></div>
+                <div><div class="k">Left</div><div class="v">—</div></div>
+              </div>
+            </Seal>
+            <Section title="How to open your game">
+              <article class="row"><span class="row-idx">01</span><span class="row-title">Open the chat with @PartyPackSanta_bot</span><span /></article>
+              <article class="row"><span class="row-idx">02</span><span class="row-title">Tap “Open in app” under your game, or send /app</span><span /></article>
+              <article class="row"><span class="row-idx">03</span><span class="row-title">Your recipient and their wishlist appear here after the draw</span><span /></article>
+            </Section>
+          </>
         )}
       </Shell>
     )
@@ -69,7 +80,7 @@ export function SantaApp() {
   const actions = tab === 'game'
     ? [
         {
-          label: recipient.giftBought ? 'MARKED BOUGHT' : 'MARK GIFT AS BOUGHT',
+          label: recipient.giftBought ? 'Gift marked as bought' : 'Mark gift as bought',
           mark: 'check' as const,
           onClick: () => {
             const bought = !recipient.giftBought
@@ -79,21 +90,21 @@ export function SantaApp() {
           },
         },
         {
-          label: asking ? 'CLOSE THE NOTE' : `ASK ${recipient.givenName.toUpperCase()} ANONYMOUSLY`,
+          label: asking ? 'Close the note' : `Ask ${recipient.givenName} anonymously`,
           tone: 'ghost' as const,
           onClick: () => setAsking((open) => !open),
         },
       ]
     : tab === 'wishlist'
-      ? [{ label: 'ADD A LINE', onClick: () => addItem(snap, setSnap, repo.current) }]
+      ? [{ label: 'Add a line', onClick: () => addItem(snap, setSnap, repo.current) }]
       : []
 
   return (
-    <Shell theme="santa" title="Secret Santa" tabs={TABS} active={tab} home="game" onTab={setTab} actions={actions} ready screen="draw">
+    <Shell theme="santa" title="Secret Santa" tabs={TABS} active={tab} home="game" onTab={setTab} actions={actions} ready screen="draw" mast={[snap.studio, `${recipient.drawStatus === 'done' ? 'Drawn' : 'Open'} · ${snap.group.length} players`]}>
       {tab === 'game' ? (
         <>
-          <Section index="01" title={snap.studio} aside={`${snap.group.length} PLAYERS · ${recipient.drawStatus === 'done' ? 'DONE' : 'OPEN'}`}>
-            <div class="kicker">You are gifting</div>
+          <Seal mark="pp">
+            <div class="kicker">The draw is done — you are gifting</div>
             <h2 class="name" data-field="recipient">
               <span>{recipient.givenName}</span>
               <span>{recipient.familyName}</span>
@@ -103,8 +114,9 @@ export function SantaApp() {
               exchange={formatShort(parseISODate(recipient.exchangeDate))}
               time={recipient.exchangeTime}
             />
-          </Section>
-          <Section index="02" title="HER WISHLIST" aside={`${recipient.wishlist.length} ITEMS`}>
+            {recipient.giftBought ? <span class="bought">Gift bought</span> : null}
+          </Seal>
+          <Section title="Her wishlist" aside={`${recipient.wishlist.length} items`}>
             {recipient.wishlist.map((item, index) => (
               <article class="row" key={item.id}>
                 <span class="row-idx">{pad2(index + 1)}</span>
@@ -117,7 +129,7 @@ export function SantaApp() {
             ))}
           </Section>
           {asking ? (
-            <Section index="03" title="ANONYMOUS NOTE">
+            <Section title="Anonymous note">
               <div class="composer">
                 <textarea
                   value={draft}
@@ -155,8 +167,8 @@ export function SantaApp() {
       ) : null}
 
       {tab === 'wishlist' ? (
-        <Section index="01" title="YOUR LIST" aside={`${snap.myWishlist.length} ITEMS`}>
-          {snap.myWishlist.length === 0 ? <Empty title="NO LINES" body="ADD WHAT YOU ACTUALLY WANT." /> : null}
+        <Section title="Your wishlist" aside={`${snap.myWishlist.length} items`}>
+          {snap.myWishlist.length === 0 ? <Empty title="No lines yet" body="Add what you actually want." /> : null}
           {snap.myWishlist.map((item, index) => (
             <Editor
               key={item.id}
@@ -176,7 +188,7 @@ export function SantaApp() {
       ) : null}
 
       {tab === 'group' ? (
-        <Section index="01" title="THE ROOM" aside={`${snap.group.length} PLAYERS`}>
+        <Section title="The room" aside={`${snap.group.length} players`}>
           <p class="note">Your assignment stays on the game tab.</p>
           {snap.group.map((member, index) => (
             <article class={member.isYou ? 'row is-you' : 'row'} key={member.id}>
@@ -190,7 +202,7 @@ export function SantaApp() {
 
       {tab === 'settings' ? (
         <>
-          <Section index="01" title="YOU">
+          <Section title="You">
             <label class="field">
               <span class="k">Display name</span>
               <input
@@ -223,10 +235,10 @@ export function SantaApp() {
               </button>
             </div>
           </Section>
-          <Section index="02" title="RECORD" aside="THIS DEVICE">
+          <Section title="Record" aside="This device">
             <p class="note">The draw itself will live on the bot. This shell keeps a local copy.</p>
           </Section>
-          <Section index="03" title="RESET">
+          <Section title="Reset">
             {armed ? (
               <div class="confirm">
                 <p class="note">Puts the demo group back to its opening state.</p>
@@ -263,10 +275,10 @@ export function SantaApp() {
 
 function StatsRow(props: { budget: string; exchange: string; time: string }) {
   return (
-    <div class="stats" data-cols="3">
-      <div class="stat"><div class="stat-label">Budget</div><div class="stat-value">{props.budget}</div></div>
-      <div class="stat"><div class="stat-label">Exchange</div><div class="stat-value date">{props.exchange}</div></div>
-      <div class="stat"><div class="stat-label">Time</div><div class="stat-value">{props.time}</div></div>
+    <div class="meta">
+      <div><div class="k">Budget</div><div class="v">{props.budget}</div></div>
+      <div><div class="k">Exchange</div><div class="v">{props.exchange}</div></div>
+      <div><div class="k">At</div><div class="v">{props.time}</div></div>
     </div>
   )
 }
