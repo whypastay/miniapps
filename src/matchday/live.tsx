@@ -77,7 +77,7 @@ export function LiveMatchdayApp(props: { snap: MatchdaySnapshot }) {
   const isLeague = live.table.code !== ''
   const rank = live.table.rank
   const players = live.table.players
-  const invite = isLeague ? botLink(`lg_${live.table.code}`) : ''
+  const invite = isLeague ? botLink(`lg_${live.table.code}${live.viewerId ? `_${live.viewerId}` : ''}`) : ''
 
   function copyInvite() {
     const text = `Join my football prediction league "${live.table.name}" on Matchday Picks: ${invite}`
@@ -95,7 +95,10 @@ export function LiveMatchdayApp(props: { snap: MatchdaySnapshot }) {
     : tab === 'league'
       ? isLeague
         ? [{ label: copied ? 'Invite copied' : 'Copy the invite link', testId: 'invite', onClick: copyInvite }]
-        : [{ label: 'Create a league in the bot', testId: 'create', onClick: () => openBot('league') }]
+        : [
+            { label: 'Create a league in the bot', testId: 'create', onClick: () => openBot('league') },
+            { label: 'Invite friends', tone: 'ghost' as const, testId: 'invite-bot', onClick: () => openBot('invite') },
+          ]
       : [{ label: 'Change settings in the bot', tone: 'ghost' as const, testId: 'settings', onClick: () => openBot('settings') }]
 
   const mast: [string, string] = [live.table.name, live.round || `${live.globalPlayers} players worldwide`]

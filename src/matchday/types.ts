@@ -90,6 +90,8 @@ export interface LiveMatchday {
   results: LiveResult[]
   remind: boolean
   round: string
+  /** The viewer's Telegram id: invite links from the app credit them (lg_<code>_<id>). 0 when unknown. */
+  viewerId: number
 }
 
 export interface MatchdaySnapshot {

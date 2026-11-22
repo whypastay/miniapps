@@ -116,8 +116,11 @@ export function LiveSanta(props: { snap: SantaSnapshot; repo: SantaRepository; o
         : [{ label: 'Open the game in the bot', testId: 'bot', onClick: () => openBot('app') }]
     : tab === 'wishlist' && game.playing
       ? [{ label: game.wishlist ? 'Edit it in the bot' : 'Write it in the bot', testId: 'edit', onClick: () => openBot(`wl_${game.gameId}`) }]
-      : tab === 'group' && drawn && game.playing
-        ? [{ label: 'Message my Santa', tone: 'ghost' as const, testId: 'santa', onClick: () => openBot(`santa_${game.gameId}`) }]
+      : tab === 'group' && drawn
+        ? [
+            ...(game.playing ? [{ label: 'Message my Santa', tone: 'ghost' as const, testId: 'santa', onClick: () => openBot(`santa_${game.gameId}`) }] : []),
+            { label: 'Organise your own Secret Santa', tone: 'ghost' as const, testId: 'organise', onClick: () => openBot('new') },
+          ]
         : []
 
   const extra = game.playerCount - game.players.length

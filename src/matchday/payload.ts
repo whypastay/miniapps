@@ -105,6 +105,7 @@ export function parsePayload(token: string | null | undefined): LiveMatchday | n
     results,
     remind: raw.rm === 1,
     round: str(raw.gw, 16) ?? '',
+    viewerId: Number.isSafeInteger(raw.r) && (raw.r as number) > 0 ? (raw.r as number) : 0,
   }
 }
 
