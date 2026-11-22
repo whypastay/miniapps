@@ -1,4 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <rect width="32" height="32" fill="#1B4A38"/>
-  <path d="M8 0v32M16 0v32M24 0v32" stroke="#E2B656" stroke-width="1"/>
+  <rect width="32" height="32" fill="#261E18"/>
+  <ellipse cx="16" cy="16.2" rx="11.2" ry="8.4" fill="none" stroke="#D4A56A" stroke-width="0.85"/>
+  <text x="16" y="21.2" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="13" fill="#E6C992">CC</text>
 </svg>
