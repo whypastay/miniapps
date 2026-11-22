@@ -161,7 +161,7 @@ export class DemoSantaRepository implements SantaRepository {
   }
 }
 
-export function createSantaRepository(): SantaRepository {
+export function createDeviceRepository(): SantaRepository {
   const demo = demoRequested()
   return new DemoSantaRepository(demo ? DEMO_KEY : LIVE_KEY, demo)
 }

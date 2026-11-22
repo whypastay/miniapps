@@ -903,3 +903,10 @@ input, textarea {
   .tab .lbl { letter-spacing: 0.04em; font-size: 8px; }
   .cta, .ghost { font-size: 11px; letter-spacing: 0.08em; }
 }
+
+/* Secret Santa — live game from the bot */
+.name.sm { font-size: clamp(56px, 18vw, 80px); }
+.name.xs { font-size: clamp(40px, 12.5vw, 58px); overflow-wrap: anywhere; }
+.wish-line { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.25; }
+.stat-value.date { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.note.stamp { font-size: 10px; letter-spacing: 0.12em; color: var(--faint); }

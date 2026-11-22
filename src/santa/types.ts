@@ -46,6 +46,8 @@ export interface SantaSnapshot {
   myWishlist: WishlistItem[]
   group: GroupMember[]
   notes: AnonymousNote[]
+  /** Present when the app was opened from a bot message. */
+  live?: LiveGame
 }
 
 /**
@@ -60,4 +62,26 @@ export interface SantaRepository {
   sendAnonymousNote(text: string): Promise<AnonymousNote>
   saveSettings(settings: SantaSettings): Promise<void>
   reset(): Promise<SantaSnapshot>
+}
+
+/** Game snapshot the bot puts into the app URL (?d=...). Payload v1. */
+export interface LiveRecipient {
+  name: string
+  wishlist: string | null
+}
+
+export interface LiveGame {
+  version: number
+  issuedAt: number
+  gameId: number
+  name: string
+  budget: string | null
+  exchangeDate: string | null
+  status: 'open' | 'drawn'
+  organizer: boolean
+  playing: boolean
+  playerCount: number
+  players: string[]
+  wishlist: string | null
+  recipient: LiveRecipient | null
 }

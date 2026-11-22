@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'preact/hooks'
 import { formatMoney, formatShort, pad2, parseISODate } from '../format.ts'
 import { haptic } from '../telegram.ts'
 import { Empty, Section, Shell } from '../ui.tsx'
-import { createSantaRepository } from './demo.ts'
+import { LiveSanta, openBot } from './live.tsx'
+import { createSantaRepository } from './repo.ts'
 import type { SantaRepository, SantaSnapshot, WishlistItem } from './types.ts'
 
 const TABS = [
@@ -34,16 +35,20 @@ export function SantaApp() {
     )
   }
 
+  if (snap.live) {
+    return <LiveSanta snap={snap} repo={repo.current} onChange={setSnap} />
+  }
+
   if (!snap.connected) {
     return (
-      <Shell theme="santa" title="Secret Santa" tabs={TABS} active={tab} home="game" onTab={setTab} ready screen="waiting" actions={[{ label: 'WAITING ON THE BOT', disabled: true, mark: 'none' }]}>
+      <Shell theme="santa" title="Secret Santa" tabs={TABS.filter((item) => item.id !== 'settings')} active={tab} home="game" onTab={setTab} ready screen="waiting" actions={[{ label: 'OPEN MY GAMES IN THE BOT', testId: 'open-bot', onClick: () => openBot('app') }]}>
         {tab === 'wishlist' ? (
           <Section index="01" title="YOUR LIST">
-            <Empty title="NO LIST" body="YOUR LINES ARRIVE WITH THE GROUP, FROM THE BOT." />
+            <Empty title="NO GAME OPEN" body="OPEN THE APP FROM YOUR GAME IN THE BOT CHAT." />
           </Section>
         ) : tab === 'group' ? (
           <Section index="01" title="THE ROOM">
-            <Empty title="NO NAMES" body="THE BOT FILLS THE ROOM WHEN THE DRAW IS MADE." />
+            <Empty title="NO NAMES" body="THE ROOM APPEARS WHEN YOU OPEN A GAME FROM THE BOT." />
           </Section>
         ) : tab === 'settings' ? (
           <Section index="01" title="RECORD" aside="WAITING">
@@ -53,7 +58,7 @@ export function SantaApp() {
           <Section index="01" title="THE DRAW">
             <div class="kicker">Your recipient</div>
             <p class="hero-blank">—</p>
-            <p class="note">The bot sends the name when the group is drawn.</p>
+            <p class="note">Open the app from your game in the chat with the bot: tap “Open in app” under the game, or send /app.</p>
           </Section>
         )}
       </Shell>
