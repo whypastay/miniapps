@@ -140,7 +140,7 @@ export class DemoMatchdayRepository implements MatchdayRepository {
   }
 }
 
-export function createMatchdayRepository(): MatchdayRepository {
+export function createDeviceRepository(): MatchdayRepository {
   const demo = demoRequested()
   return new DemoMatchdayRepository(demo ? DEMO_KEY : LIVE_KEY, demo)
 }

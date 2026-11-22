@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'preact/hooks'
 import { formatDay, formatRemain, pad2, parseISODate } from '../format.ts'
 import { haptic } from '../telegram.ts'
 import { Empty, Pitch, Section, Shell } from '../ui.tsx'
-import { createMatchdayRepository, impliedResult, picksMade } from './demo.ts'
+import { impliedResult, picksMade } from './demo.ts'
+import { LiveMatchdayApp, openBot } from './live.tsx'
+import { createMatchdayRepository } from './repo.ts'
 import type { MatchdayRepository, MatchdaySnapshot, Pick, ResultPick } from './types.ts'
 
 const TABS = [
@@ -40,9 +42,13 @@ export function MatchdayApp() {
     )
   }
 
+  if (snap.live) {
+    return <LiveMatchdayApp snap={snap} />
+  }
+
   if (!snap.connected) {
     return (
-      <Shell theme="matchday" title="Matchday" tabs={TABS} active={tab} home="table" onTab={setTab} ready screen="waiting" mast={['Friends league', 'Waiting for the bot']} actions={[{ label: 'Waiting on the bot', disabled: true, mark: 'none' }]}>
+      <Shell theme="matchday" title="Matchday" tabs={TABS} active={tab} home="table" onTab={setTab} ready screen="waiting" mast={['Friends league', 'Waiting for the bot']} actions={[{ label: 'Open Matchday Picks', testId: 'open-bot', onClick: () => openBot('app') }]}>
         {tab === 'picks' ? (
           <Section title="Picks">
             <Empty title="No fixtures yet" body="The bot publishes the slate when the gameweek opens." />

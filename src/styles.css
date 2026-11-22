@@ -921,3 +921,7 @@ input, textarea { border-radius: 0; background: transparent; }
 /* Secret Santa — live game from the bot */
 .wish-line { white-space: pre-wrap; overflow-wrap: anywhere; }
 .note.stamp { margin-top: 14px; font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--faint); }
+
+/* Matchday live (bot snapshot): the pick is read-only, the button deep-links to the bot. */
+.picks .live-score { margin-left: 0; margin-right: auto; font-size: 16px; color: var(--ink); letter-spacing: 0.04em; }
+.picks .live-go { width: auto; min-width: 96px; padding: 0 14px; font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; }

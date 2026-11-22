@@ -42,7 +42,58 @@ export interface MatchdaySettings {
   remindBeforeLock: boolean
 }
 
+/** One upcoming fixture as the bot sent it, with this user's prediction (if any). */
+export interface LiveFixture {
+  id: string
+  kickoff: number
+  home: string
+  away: string
+  comp: string
+  predHome: number | null
+  predAway: number | null
+}
+
+export interface LiveResult {
+  home: string
+  away: string
+  homeScore: number
+  awayScore: number
+  predHome: number
+  predAway: number
+  points: number
+}
+
+export interface LiveRow {
+  name: string
+  points: number
+  isYou: boolean
+  rank: number
+}
+
+/** The per-user snapshot the bot packs into ?d= (see bots/matchday/matchday/webapp.py). */
+export interface LiveMatchday {
+  version: number
+  issuedAt: number
+  botUsername: string
+  timeZone: string
+  zoneLabel: string
+  resultPoints: number
+  exactPoints: number
+  name: string
+  globalRank: number | null
+  globalPlayers: number
+  points: number
+  exact: number
+  table: { name: string; code: string; rank: number | null; players: number; rows: LiveRow[] }
+  leagues: Array<{ name: string; code: string }>
+  fixtures: LiveFixture[]
+  results: LiveResult[]
+  remind: boolean
+  round: string
+}
+
 export interface MatchdaySnapshot {
+  live?: LiveMatchday | null
   connected: boolean
   gameweek: Gameweek
   fixtures: Fixture[]
@@ -54,8 +105,8 @@ export interface MatchdaySnapshot {
 
 /**
  * Screens talk only to this interface.
- * DemoMatchdayRepository keeps a local league.
- * Replace it in createMatchdayRepository() when the bot owns the table.
+ * DemoMatchdayRepository keeps a local league (?demo=1 or the waiting state).
+ * BotMatchdayRepository reads the snapshot the bot put into ?d=.
  */
 export interface MatchdayRepository {
   load(): Promise<MatchdaySnapshot>
