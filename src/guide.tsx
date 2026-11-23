@@ -204,11 +204,11 @@ export const GIGS_GUIDE: GuideSpec = {
     },
   ],
   how: [
-    'Gigs lists AI-training and data platforms with your status: open, varies by project, invite only, or not open.',
+    'AI gigs lists AI-training and data platforms with your status: open, varies by project, invite only, or not open.',
     'Tap a platform for its country rules, sign-up steps, tasks, pay and common complaints, with links to its own pages.',
     'Sign up only on the official site shown on the card. Joining is free on every real platform.',
-    'Never buy, rent or share an account, and never use a VPN to fake your country: platforms close those accounts and keep the pay.',
-    'Turn on the notice to hear when a platform opens to your country. Live gig listings below come from Himalayas, Remote OK and Jobicy.',
+    'Never buy, rent or share an account, and never use a VPN to fake your country: platforms close those accounts and pending pay can be lost.',
+    'Turn on the notice to hear when a platform opens to your country. Live gig listings on the same tab come from Himalayas, Remote OK and Jobicy.',
   ],
   faq: [
     { q: 'How current is this?', a: 'We read each platform\'s public pages by hand and review the list every week. Rules change fast, so the official site has the final word.' },
