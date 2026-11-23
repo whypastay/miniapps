@@ -3,17 +3,19 @@ import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import { formatRemain, pad2 } from '../format.ts'
 import { Api, ApiError, copyText, openLink, requestWriteAccess, startParam } from '../api.ts'
 import { haptic } from '../telegram.ts'
-import { GuideScope, MATCHDAY_GUIDE } from '../guide.tsx'
+import { GuideScope, MATCHDAY_GUIDE, MATCHDAY_PLUS_GUIDE } from '../guide.tsx'
 import { Empty, Pitch, Section, Shell } from '../ui.tsx'
 import { kickoffLabel } from './live.tsx'
+import { parseRecap, RecapView, type RecapOut, type RecapTarget, type RoundChip } from './rounds.tsx'
 
 /* ---------- API shapes (matchday/api.py) ---------- */
-interface Fx { id: string; kickoff: number; home: string; away: string; comp: string; round: string | null; predHome: number | null; predAway: number | null }
+interface Fx { id: string; kickoff: number; home: string; away: string; comp: string; round: string | null; predHome: number | null; predAway: number | null; status?: string }
+interface LiveFx extends Fx { liveHome: number | null; liveAway: number | null; provisional: number | null }
 interface Res { home: string; away: string; homeScore: number; awayScore: number; predHome: number; predAway: number; points: number; kickoff: number }
 interface Row { name: string; pts: number; exact: number; rank: number | null; you: boolean }
-interface League { id: number; name: string; code: string; members: number; owner: boolean; group: boolean; inviteLink: string; shareUrl: string }
+interface League { id: number; name: string; code: string; members: number; owner: boolean; group: boolean; inviteLink: string; shareUrl: string; recap?: boolean }
 interface State {
-  me: { id: number; name: string; tz: string; zoneLabel: string; tzSet: boolean; remind: boolean; results: boolean; referrals: number; refLink: string; shareUrl: string; onboarded?: boolean }
+  me: { id: number; name: string; tz: string; zoneLabel: string; tzSet: boolean; remind: boolean; results: boolean; referrals: number; refLink: string; shareUrl: string; onboarded?: boolean; plusOnboarded?: boolean }
   gate?: import('../guide.tsx').GateInfo
   scoring: { result: number; exact: number }
   remindHours: number
@@ -21,6 +23,9 @@ interface State {
   leagues: League[]
   table: { id: number; name: string; code: string; rank: number | null; players: number; rows: Row[] }
   fixtures: Fx[]
+  live?: LiveFx[]
+  rounds?: RoundChip[]
+  data?: { source: string; attribution: string; delayed: boolean; auto: boolean; updated: string }
   results: Res[]
   round: string
   zones: Array<{ key: string; zone: string; title: string }>
@@ -32,6 +37,7 @@ interface State {
 const TABS = [
   { id: 'table', label: 'Table', icon: 'bars' as const },
   { id: 'picks', label: 'Picks', icon: 'ledger' as const },
+  { id: 'rounds', label: 'Rounds', icon: 'paper' as const },
   { id: 'league', label: 'League', icon: 'people' as const },
   { id: 'settings', label: 'Settings', icon: 'gear' as const },
 ]
@@ -47,6 +53,12 @@ function initials(name: string): string {
   const letters = parts.length > 1 ? parts[0][0] + parts[parts.length - 1][0] : (parts[0] ?? '?').slice(0, 2)
   return letters.toUpperCase()
 }
+
+function launchRecap(): RecapTarget | null {
+  return parseRecap(startParam()) ?? parseRecap(new URLSearchParams(location.search).get('rc'))
+}
+
+const LIVE_LABEL: Record<string, string> = { IN_PLAY: 'LIVE', LIVE: 'LIVE', PAUSED: 'HT', SUSPENDED: 'STOPPED' }
 
 function launchJoin(): string | null {
   const sp = startParam() ?? ''
@@ -64,7 +76,10 @@ export function ServerMatchday(props: { api: Api; onOffline?: () => void }) {
     const lg = Number(new URLSearchParams(location.search).get('lg') ?? '')
     return Number.isInteger(lg) && lg > 0 ? lg : null
   })
-  const [tab, setTab] = useState('table')
+  const [tab, setTab] = useState(() => (launchRecap() ? 'rounds' : 'table'))
+  const [rc, setRc] = useState<RecapOut | null>(null)
+  const [rcWant, setRcWant] = useState<RecapTarget | null>(() => launchRecap())
+  const [rcErr, setRcErr] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [fatal, setFatal] = useState<string | null>(null)
@@ -118,12 +133,38 @@ export function ServerMatchday(props: { api: Api; onOffline?: () => void }) {
     return () => { cancel = true; window.clearInterval(timer) }
   }, [])
 
+  // Matchday+: load the recap for the chosen round and scope (a shared link can carry a league code).
+  const scopeId = st ? (st.table.code ? st.table.id : 0) : -1
+  useEffect(() => {
+    if (tab !== 'rounds' || !st) return
+    let cancel = false
+    const p = new URLSearchParams()
+    if (rcWant) { p.set('comp', rcWant.comp); p.set('round', String(rcWant.round)) }
+    if (rcWant?.code && !st.leagues.some((l) => l.code === rcWant.code)) p.set('code', rcWant.code)
+    else if (rcWant?.code) p.set('league', String(st.leagues.find((l) => l.code === rcWant.code)!.id))
+    else if (scopeId > 0) p.set('league', String(scopeId))
+    setRcErr(null)
+    api.get<RecapOut>(`/recap?${p.toString()}`).then((out) => { if (!cancel) setRc(out) }).catch((err) => {
+      if (!cancel) { setRc(null); setRcErr(err instanceof ApiError ? err.message : 'The recap did not load. Try again.') }
+    })
+    return () => { cancel = true }
+  }, [tab, rcWant?.comp, rcWant?.round, rcWant?.code, scopeId, Boolean(st)])
+
   const invited = useRef(launchJoin())
+  const recapLaunch = useRef(launchRecap())
   const hint = invited.current
     ? 'You were invited to a league. Join below — the short guide is under ? if you want it later.'
-    : null
-  const guide = (node: ComponentChildren, ready = true) => (
-    <GuideScope theme="matchday" spec={MATCHDAY_GUIDE} api={api} ready={ready && Boolean(st || fatal)} onboarded={Boolean(st?.me.onboarded)} hint={hint} gate={st?.gate}>
+    : recapLaunch.current
+      ? 'Someone shared a round recap with you. It is below — the short guide is under ? if you want it later.'
+      : null
+  // Rounds (Matchday+) has its own intro and help, remembered separately; the original intro is unchanged.
+  const guide = (node: ComponentChildren, ready = true) => tab === 'rounds' ? (
+    <GuideScope key="plus" theme="matchday" spec={MATCHDAY_PLUS_GUIDE} api={api} ready={ready && Boolean(st || fatal)} onboarded={Boolean(st?.me.plusOnboarded)}
+      hint={hint} doneBody={{ done: true, mode: 'plus' }} gate={st?.gate} publicPage={Boolean(recapLaunch.current)}>
+      {node}
+    </GuideScope>
+  ) : (
+    <GuideScope key="main" theme="matchday" spec={MATCHDAY_GUIDE} api={api} ready={ready && Boolean(st || fatal)} onboarded={Boolean(st?.me.onboarded)} hint={hint} gate={st?.gate}>
       {node}
     </GuideScope>
   )
@@ -156,6 +197,11 @@ export function ServerMatchday(props: { api: Api; onOffline?: () => void }) {
     const f = fixtures.find((x) => x.id === id)
     return f && f.ms > now && (f.predHome !== draft[id].h || f.predAway !== draft[id].a)
   })
+
+  function liveOf(id: string): string | null {
+    const l = (s.live ?? []).find((x) => x.id === id)
+    return l && l.liveHome !== null ? `${LIVE_LABEL[l.status ?? ''] ?? 'LIVE'} ${l.liveHome}–${l.liveAway}` : null
+  }
 
   function value(f: Fx): { h: number; a: number } | null {
     return draft[f.id] ?? (f.predHome !== null && f.predAway !== null ? { h: f.predHome, a: f.predAway } : null)
@@ -220,8 +266,26 @@ export function ServerMatchday(props: { api: Api; onOffline?: () => void }) {
     else if (form === 'join') actions = [{ label: 'Join the league', testId: 'join', disabled: busy || !code.trim(), onClick: () => void joinLeague() }, { label: 'Not now', tone: 'ghost', onClick: () => setForm(null) }]
     else if (current) actions = [{ label: 'Invite friends to this league', testId: 'invite', onClick: () => openLink(current.shareUrl) }]
     else actions = [{ label: 'Create a league', testId: 'new-league', onClick: () => setForm('create') }, { label: 'Join with a code', tone: 'ghost', testId: 'to-join', onClick: () => setForm('join') }]
+  } else if (tab === 'rounds') {
+    if (rc?.joinCode) actions = [{ label: `Join ${rc.recap.scope}`, testId: 'recap-join', onClick: () => { setCode(rc.joinCode!); setForm('join'); setTab('league') } }]
+    else if (rc) actions = [
+      { label: 'Share this recap', testId: 'recap-share', onClick: () => { haptic('tap'); openLink(rc.shareUrl) } },
+      { label: busy ? 'Sending' : 'Send the card to my chat', tone: 'ghost', testId: 'recap-send', disabled: busy, onClick: () => void sendCard() },
+    ]
   } else if (tab === 'settings') {
     actions = [{ label: 'Invite a friend to play', tone: 'ghost', testId: 'invite-bot', onClick: () => openLink(s.me.shareUrl) }]
+  }
+
+  async function sendCard() {
+    if (!rc) return
+    await requestWriteAccess()
+    const body: Record<string, unknown> = { comp: rc.recap.comp, round: rc.recap.round }
+    if (rc.recap.league) body[rc.member ? 'league' : 'code'] = rc.member ? rc.recap.league.id : rc.recap.league.code
+    await run(() => api.post('/recap/send', body), 'Sent. Open your chat with the bot and forward it.')
+  }
+  async function leagueRecap(on: boolean) {
+    if (!current) return
+    apply(await run(() => api.patch<State>(`/leagues/${current.id}${q(league)}`, { recap: on }), on ? 'Round messages on for this chat.' : 'Round messages off for this chat.'))
   }
 
   async function createLeague() {
@@ -247,6 +311,19 @@ export function ServerMatchday(props: { api: Api; onOffline?: () => void }) {
   const mast: [string, string] = [s.table.name, s.round || `${s.global.players} players worldwide`]
   const myPts = isLeague ? (s.table.rows.find((r) => r.you)?.pts ?? 0) : s.global.pts
   const myExact = isLeague ? (s.table.rows.find((r) => r.you)?.exact ?? 0) : s.global.exact
+
+  const liveSection = (s.live ?? []).length ? (
+            <Section title="Live now" aside="delayed">
+              {(s.live ?? []).map((f) => (
+                <article class="row" key={f.id} data-live={f.id}>
+                  <span class="row-idx live-dot">{LIVE_LABEL[f.status ?? ''] ?? (f.liveHome !== null ? 'LIVE' : 'ON')}</span>
+                  <span class="row-title">{f.home} <b class="mono">{f.liveHome !== null ? `${f.liveHome}–${f.liveAway}` : 'v'}</b> {f.away}
+                    <span class="row-sub">{f.predHome !== null ? `You said ${f.predHome}–${f.predAway}` : 'No pick'}{f.provisional !== null ? ` · ${f.provisional} pts if it ends now` : ''}</span></span>
+                  <span class="row-val">{f.provisional !== null ? `+${f.provisional}` : ''}</span>
+                </article>
+              ))}
+            </Section>
+          ) : null
 
   return guide((
     <Shell theme="matchday" title="Matchday" tabs={TABS} active={tab} home="table" onTab={(t) => { setConfirm(null); setTab(t) }} actions={actions} ready screen={`live-${tab}`} mast={mast} toast={toast}
@@ -281,6 +358,13 @@ export function ServerMatchday(props: { api: Api; onOffline?: () => void }) {
             <span>{next ? `${todo.length ? 'Next pick locks' : 'Next kick-off'} · ${next.home} v ${next.away}` : 'No open fixtures'}</span>
             <b data-field="lock">{next ? formatRemain(next.ms - now).split(':').join(' : ') : '-- : -- : --'}</b>
           </div>
+          {liveSection}
+          {!s.me.plusOnboarded && (s.rounds ?? []).length ? (
+            <div class="lock" data-field="plus-new">
+              <span>New: a recap card for every round</span>
+              <button type="button" class="text-btn" data-action="to-rounds" onClick={() => setTab('rounds')}>OPEN</button>
+            </div>
+          ) : null}
           {s.leagues.length ? (
             <div class="picks-wrap" role="group" aria-label="Table">
               <button type="button" class="choice" aria-pressed={!isLeague} onClick={() => void switchLeague(null)}>Worldwide</button>
@@ -303,6 +387,7 @@ export function ServerMatchday(props: { api: Api; onOffline?: () => void }) {
               </>
             ) : <Empty title="No table yet" body="Make your first prediction and you are on the board." />}
           </Section>
+          {s.data ? <p class="note attrib" data-field="attribution">{s.data.attribution}. Scores update automatically and are slightly delayed.</p> : null}
           {s.results.length ? (
             <Section title="Your last results" aside={`${s.results.reduce((sum, r) => sum + r.points, 0)} pts`}>
               {s.results.map((r, index) => (
@@ -317,6 +402,7 @@ export function ServerMatchday(props: { api: Api; onOffline?: () => void }) {
         </>
       ) : null}
 
+      {tab === 'picks' ? liveSection : null}
       {tab === 'picks' ? (
         <Section title="Open fixtures" aside={`${s.round ? s.round + ' · ' : ''}${open.length - todo.length}/${open.length} in`}>
           <p class="note">Correct result {s.scoring.result} pt. Exact score {s.scoring.exact} pts. Times in {s.me.zoneLabel}. Each pick locks at kick-off.</p>
@@ -334,7 +420,7 @@ export function ServerMatchday(props: { api: Api; onOffline?: () => void }) {
                 <div class="away">{f.away}</div>
                 <div class="picks">
                   {locked ? (
-                    <span class="score live-score" data-field="pick">{v ? `${v.h} : ${v.a}` : '– : –'} · locked</span>
+                    <span class="score live-score" data-field="pick">{v ? `${v.h} : ${v.a}` : '– : –'} · {liveOf(f.id) ?? 'locked'}</span>
                   ) : (
                     <>
                       <span class="stepper" data-side="home">
@@ -355,6 +441,22 @@ export function ServerMatchday(props: { api: Api; onOffline?: () => void }) {
             )
           })}
         </Section>
+      ) : null}
+
+      {tab === 'rounds' ? (
+        <>
+          {s.leagues.length ? (
+            <div class="picks-wrap" role="group" aria-label="Recap for">
+              <button type="button" class="choice" aria-pressed={!isLeague && !(rc && rc.recap.league && !rc.member)} onClick={() => { setRcWant(rcWant ? { ...rcWant, code: null } : null); void switchLeague(null) }}>Worldwide</button>
+              {s.leagues.map((l) => <button type="button" class="choice" key={l.id} aria-pressed={l.id === s.table.id} onClick={() => { setRcWant(rcWant ? { ...rcWant, code: null } : null); void switchLeague(l.id) }}>{l.name}</button>)}
+            </div>
+          ) : null}
+          {rc ? (
+            <RecapView out={rc} exact={s.scoring.exact} onRound={(comp, round) => { haptic('select'); setRcWant({ comp, round, code: rcWant?.code ?? null }) }} />
+          ) : rcErr ? (
+            <Empty title="No recap yet" body={`${rcErr} When the first results of a round are in, its recap appears here.`} />
+          ) : <p class="loading">Setting the back page</p>}
+        </>
       ) : null}
 
       {tab === 'league' ? (
@@ -379,6 +481,12 @@ export function ServerMatchday(props: { api: Api; onOffline?: () => void }) {
               <p class="note">{current.members} players · friends join with the code or the link</p>
               <div class="field"><span class="k">Invite link</span>
                 <button type="button" class="text-btn" onClick={() => void copyText(current.inviteLink).then((ok) => { say(ok ? 'Link copied.' : current.inviteLink); haptic('tap') })}>COPY</button></div>
+              {current.group ? (
+                <div class="field"><span class="k">Round preview & recap in the group chat</span>
+                  {current.owner
+                    ? <button type="button" class="choice" aria-pressed={current.recap !== false} data-field="league-recap" onClick={() => void leagueRecap(current.recap === false)}>{current.recap !== false ? 'ON' : 'OFF'}</button>
+                    : <span class="row-val">{current.recap !== false ? 'ON' : 'OFF'}</span>}</div>
+              ) : null}
               <div class="field"><span class="k">Leave this league</span>
                 <button type="button" class="text-btn danger" data-action="leave" onClick={() => setConfirm('leave')}>LEAVE</button></div>
             </Section>

@@ -5,7 +5,7 @@ import { useGuideChrome } from './guide.tsx'
 import { themeBlock, themes, type ThemeId } from './theme.ts'
 import { bindBackButton, bootTelegram, closeOrLeave, haptic, nativeChromeVisible, telegramFullscreen, telegramProfile } from './telegram.ts'
 
-export type IconName = 'ledger' | 'bars' | 'people' | 'gear' | 'gift' | 'list' | 'grid' | 'cards' | 'split' | 'radar' | 'bookmark' | 'shield' | 'spark'
+export type IconName = 'ledger' | 'bars' | 'people' | 'gear' | 'gift' | 'list' | 'grid' | 'cards' | 'split' | 'radar' | 'bookmark' | 'shield' | 'spark' | 'paper'
 
 export interface TabItem {
   id: string
@@ -68,6 +68,7 @@ const ICONS: Record<IconName, ComponentChildren> = {
   bookmark: <path d="M5 3h10v14l-5-3.6L5 17z" />,
   spark: <><path d="M10 2.5c.6 4 3.5 6.9 7.5 7.5-4 .6-6.9 3.5-7.5 7.5-.6-4-3.5-6.9-7.5-7.5 4-.6 6.9-3.5 7.5-7.5z" /><path d="M16 2.5v3M14.5 4h3" /></>,
   shield: <><path d="M10 2.5 16 5v5c0 3.6-2.6 6.3-6 7.5C6.6 16.3 4 13.6 4 10V5z" /><path d="M10 7v4M10 13.2v.6" /></>,
+  paper: <><path d="M3 4h11v12H5a2 2 0 0 1-2-2z" /><path d="M14 7h3v7a2 2 0 0 1-2 2h-1M6 7h5M6 10h5M6 13h3" /></>,
   cards: <><rect x="6" y="3" width="10" height="13" transform="rotate(8 11 9.5)" /><rect x="3" y="4" width="10" height="13" /><path d="M6 9h4M6 12h3" /></>,
 }
 

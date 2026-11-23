@@ -161,6 +161,46 @@ export const MATCHDAY_GUIDE: GuideSpec = {
   ],
 }
 
+/** Matchday+ (Rounds tab): its own intro and help, remembered separately (plusOnboarded). */
+export const MATCHDAY_PLUS_GUIDE: GuideSpec = {
+  id: 'matchday',
+  cards: [
+    {
+      kicker: '01',
+      title: 'Scores arrive by themselves',
+      body: 'Fixtures, live and final scores come in automatically, a few minutes behind the TV. Your picks are scored at full time.',
+    },
+    {
+      kicker: '02',
+      title: 'Every round gets a back page',
+      body: 'When a round ends, Rounds shows who won it, who called the exact score, and how the table moved.',
+    },
+    {
+      kicker: '03',
+      title: 'Forward the card anywhere',
+      body: 'Share a link to the recap, or send the picture to your chat with the bot and forward it to a group or WhatsApp.',
+    },
+    {
+      kicker: '04',
+      title: 'Your group chat keeps score',
+      body: 'Add the bot to a group and send /league. The chat gets a preview before a round and the recap after it. Still free, no betting.',
+    },
+  ],
+  how: [
+    'Rounds lists recent gameweeks (and Champions League matchdays) with at least one result. Tap one to read its recap.',
+    'Switch between Worldwide and your leagues to see the same round for a different table.',
+    'Live scores show as LIVE and are slightly delayed. Points count only at full time, after 90 minutes plus stoppage time; extra time and penalties do not count.',
+    'Share opens Telegram’s chat picker with a link to the recap. “Send to my chat” puts the picture in your chat with the bot, ready to forward.',
+    'In a group, /recap posts the last round’s card. The league owner can turn round messages off in League.',
+  ],
+  faq: [
+    { q: 'Where do the scores come from?', a: 'Football data provided by the Football-Data.org API. The free feed is a little delayed, so a final score can take a few minutes to appear.' },
+    { q: 'Is there betting or odds?', a: 'No. There are no odds, no stakes and no prizes. The card says so too.' },
+    { q: 'Who sees my name on a card?', a: 'Your first name and points, the same as on the table. A league card only shows members of that league.' },
+    { q: 'Can I stop the messages?', a: 'Turn off “Full-time results” in Settings. Group owners can turn off round messages in League.' },
+  ],
+}
+
 export const BUDGET_GUIDE: GuideSpec = {
   id: 'budget',
   cards: [
