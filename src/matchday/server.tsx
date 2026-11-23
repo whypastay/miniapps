@@ -13,7 +13,8 @@ interface Fx { id: string; kickoff: number; home: string; away: string; comp: st
 interface LiveFx extends Fx { liveHome: number | null; liveAway: number | null; provisional: number | null }
 interface Res { home: string; away: string; homeScore: number; awayScore: number; predHome: number; predAway: number; points: number; kickoff: number }
 interface Row { name: string; pts: number; exact: number; rank: number | null; you: boolean }
-interface League { id: number; name: string; code: string; members: number; owner: boolean; group: boolean; inviteLink: string; shareUrl: string; recap?: boolean }
+interface League { id: number; name: string; code: string; members: number; owner: boolean; group: boolean; inviteLink: string; shareUrl: string; recap?: boolean; comps?: string[] }
+interface Comp { code: string; name: string; short: string; tag: string; area: string; color: string; available: boolean; season: { start: string | null; end: string | null } }
 interface State {
   me: { id: number; name: string; tz: string; zoneLabel: string; tzSet: boolean; remind: boolean; results: boolean; referrals: number; refLink: string; shareUrl: string; onboarded?: boolean; plusOnboarded?: boolean }
   gate?: import('../guide.tsx').GateInfo
@@ -21,7 +22,9 @@ interface State {
   remindHours: number
   global: { rank: number | null; players: number; pts: number; exact: number }
   leagues: League[]
-  table: { id: number; name: string; code: string; rank: number | null; players: number; rows: Row[] }
+  table: { id: number; name: string; code: string; rank: number | null; players: number; rows: Row[]; comps?: string[] }
+  competitions?: Comp[]
+  compsChanged?: { added: string[]; removed: string[] }
   fixtures: Fx[]
   live?: LiveFx[]
   rounds?: RoundChip[]
@@ -60,6 +63,44 @@ function launchRecap(): RecapTarget | null {
 
 const LIVE_LABEL: Record<string, string> = { IN_PLAY: 'LIVE', LIVE: 'LIVE', PAUSED: 'HT', SUSPENDED: 'STOPPED' }
 
+/** lc_CODE (group card ⚙️ Competitions, or ?lc= on the bot's button): open that league's competition picker. */
+function launchComps(): string | null {
+  const sp = startParam() ?? ''
+  if (sp.startsWith('lc_')) return sp.slice(3)
+  return new URLSearchParams(location.search).get('lc')
+}
+
+const DEFAULT_COMPS = ['PL', 'UCL']
+
+function compNames(codes: string[], cat: Comp[] | undefined): string {
+  const names = codes.map((c) => cat?.find((x) => x.code === c)?.name ?? c)
+  return names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} & ${names[names.length - 1]}`
+}
+
+function CompPicker(props: { cat: Comp[]; value: string[]; keep?: string[]; onChange: (v: string[]) => void }) {
+  return (
+    <div class="comp-grid" role="group" aria-label="Competitions">
+      {props.cat.filter((c) => c.available || props.keep?.includes(c.code)).map((c) => {
+        const on = props.value.includes(c.code)
+        return (
+          <button type="button" class="comp" key={c.code} data-comp={c.code} aria-pressed={on}
+            style={{ ['--comp' as string]: c.color }}
+            onClick={() => { haptic('select'); props.onChange(on ? props.value.filter((x) => x !== c.code) : [...props.value, c.code]) }}>
+            <span class="comp-dot" aria-hidden="true" />
+            <span class="comp-name">{c.name}</span>
+            <span class="comp-area">{c.area}</span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function CompTag(props: { code: string; cat: Comp[] | undefined }) {
+  const c = props.cat?.find((x) => x.code === props.code)
+  return <span class="comp-tag" style={{ ['--comp' as string]: c?.color ?? 'currentColor' }}>{c?.tag ?? props.code}</span>
+}
+
 function launchJoin(): string | null {
   const sp = startParam() ?? ''
   const q = new URLSearchParams(location.search)
@@ -87,6 +128,9 @@ export function ServerMatchday(props: { api: Api; onOffline?: () => void }) {
   const [now, setNow] = useState(() => Date.now())
   const [askRemind, setAskRemind] = useState(false)
   const [form, setForm] = useState<null | 'create' | 'join'>(null)
+  const [newComps, setNewComps] = useState<string[]>(DEFAULT_COMPS)
+  const [editComps, setEditComps] = useState<string[] | null>(null)
+  const compsLaunch = useRef(launchComps())
   const [name, setName] = useState('')
   const [code, setCode] = useState('')
   const [confirm, setConfirm] = useState<null | 'leave' | 'delete'>(null)
@@ -123,7 +167,17 @@ export function ServerMatchday(props: { api: Api; onOffline?: () => void }) {
     let cancel = false
     const join = launchJoin()
     if (join) { setCode(join); setForm('join'); setTab('league') }
-    void api.get<State>(`/state${q(league)}`).then((next) => { if (!cancel) apply(next) }).catch((err) => {
+    const lc = compsLaunch.current
+    if (lc) setTab('league')
+    void api.get<State>(`/state${q(league)}`).then(async (next) => {
+      if (cancel) return
+      const target = lc ? next.leagues.find((l) => l.code === lc.toUpperCase()) : null
+      if (lc && target && target.id !== next.table.id) next = await api.get<State>(`/state?league=${target.id}`)
+      if (cancel) return
+      apply(next)
+      if (lc && target?.owner) setEditComps(target.comps ?? DEFAULT_COMPS)
+      else if (lc && !target) { setCode(lc); setForm('join') }
+    }).catch((err) => {
       if (cancel) return
       const down = !(err instanceof ApiError) || err.status === 0 || err.status >= 500
       if (down && props.onOffline && new URLSearchParams(location.search).get('d')) { props.onOffline(); return }
@@ -262,7 +316,8 @@ export function ServerMatchday(props: { api: Api; onOffline?: () => void }) {
     if (dirty.length) actions = [{ label: busy ? 'Saving' : dirty.length === 1 ? 'Save my pick' : `Save ${dirty.length} picks`, testId: 'save-picks', disabled: busy, onClick: () => void savePicks() }]
     else if (tab === 'table' && todo.length) actions = [{ label: `Predict ${todo[0].home} v ${todo[0].away}`, aside: `${open.length - todo.length}/${open.length}`, testId: 'to-picks', onClick: () => setTab('picks') }]
   } else if (tab === 'league') {
-    if (form === 'create') actions = [{ label: 'Create the league', testId: 'create', disabled: busy || name.trim().length < 2, onClick: () => void createLeague() }, { label: 'Not now', tone: 'ghost', onClick: () => setForm(null) }]
+    if (form === 'create') actions = [{ label: 'Create the league', testId: 'create', disabled: busy || name.trim().length < 2 || !newComps.length, onClick: () => void createLeague() }, { label: 'Not now', tone: 'ghost', onClick: () => setForm(null) }]
+    else if (editComps && current) actions = [{ label: busy ? 'Saving' : 'Save competitions', testId: 'save-comps', disabled: busy || !editComps.length, onClick: () => void saveComps() }, { label: 'Keep as is', tone: 'ghost', testId: 'cancel-comps', onClick: () => setEditComps(null) }]
     else if (form === 'join') actions = [{ label: 'Join the league', testId: 'join', disabled: busy || !code.trim(), onClick: () => void joinLeague() }, { label: 'Not now', tone: 'ghost', onClick: () => setForm(null) }]
     else if (current) actions = [{ label: 'Invite friends to this league', testId: 'invite', onClick: () => openLink(current.shareUrl) }]
     else actions = [{ label: 'Create a league', testId: 'new-league', onClick: () => setForm('create') }, { label: 'Join with a code', tone: 'ghost', testId: 'to-join', onClick: () => setForm('join') }]
@@ -289,8 +344,19 @@ export function ServerMatchday(props: { api: Api; onOffline?: () => void }) {
   }
 
   async function createLeague() {
-    const nextState = await run(() => api.post<State>('/leagues', { name: name.trim() }), 'League created. Invite your friends.')
-    if (nextState) { apply(nextState); setForm(null); setName('') }
+    const nextState = await run(() => api.post<State>('/leagues', { name: name.trim(), comps: newComps }), 'League created. Invite your friends.')
+    if (nextState) { apply(nextState); setForm(null); setName(''); setNewComps(DEFAULT_COMPS) }
+  }
+  async function saveComps() {
+    if (!current || !editComps) return
+    const nextState = await run(() => api.patch<State>(`/leagues/${current.id}?league=${current.id}`, { comps: editComps }))
+    if (nextState) {
+      apply(nextState)
+      setEditComps(null)
+      const ch = nextState.compsChanged
+      say(ch && (ch.added.length || ch.removed.length) ? 'Saved. It counts from the next kick-off; points already won stay.' : 'No change.')
+      haptic('success')
+    }
   }
   async function joinLeague() {
     const nextState = await run(() => api.post<State>('/leagues/join', { code: code.trim().replace(/^.*lg_/, '') }), 'You joined the league.')
@@ -371,6 +437,7 @@ export function ServerMatchday(props: { api: Api; onOffline?: () => void }) {
               {s.leagues.map((l) => <button type="button" class="choice" key={l.id} aria-pressed={l.id === s.table.id} onClick={() => void switchLeague(l.id)}>{l.name}</button>)}
             </div>
           ) : null}
+          <p class="note comp-scope" data-field="view-comps">{isLeague ? 'This league plays on' : 'Worldwide table'}: {compNames(s.table.comps ?? DEFAULT_COMPS, s.competitions)}</p>
           <Section title="The table" aside={`Pts · exact score = ${s.scoring.exact}`}>
             {s.table.rows.length ? (
               <>
@@ -415,7 +482,7 @@ export function ServerMatchday(props: { api: Api; onOffline?: () => void }) {
               <article class={locked ? 'fixture is-locked' : 'fixture'} key={f.id} data-fixture={f.id}>
                 <div class="fixture-top">
                   <h3><span class="row-idx">{pad2(index + 1)}</span>{f.home}</h3>
-                  <span class="when">{f.comp === 'UCL' ? 'UCL · ' : ''}{kickoffLabel(f.ms, zone, s.me.zoneLabel)}</span>
+                  <span class="when"><CompTag code={f.comp} cat={s.competitions} /> {kickoffLabel(f.ms, zone, s.me.zoneLabel)}</span>
                 </div>
                 <div class="away">{f.away}</div>
                 <div class="picks">
@@ -468,10 +535,22 @@ export function ServerMatchday(props: { api: Api; onOffline?: () => void }) {
               <p class="note">You get a code and a link to share. Friends who join appear on your league table.</p>
             </Section>
           ) : null}
+          {form === 'create' && s.competitions ? (
+            <Section title="Competitions" aside={`${newComps.length} picked`}>
+              <p class="note">Pick one or more. Picks, Table and Rounds for this league use only these. You can change them later.</p>
+              <CompPicker cat={s.competitions} value={newComps} onChange={setNewComps} />
+            </Section>
+          ) : null}
           {form === 'join' ? (
             <Section title="Join a league">
               <label class="field stack"><span class="k">League code or link</span>
                 <input type="text" maxLength={80} value={code} placeholder="K7QX2M" data-field="league-code" onInput={(e) => setCode(e.currentTarget.value)} /></label>
+            </Section>
+          ) : null}
+          {!form && current && editComps && s.competitions ? (
+            <Section title="Competitions" aside={`${editComps.length} picked`}>
+              <p class="note">Changes count from the next kick-off. Points already won stay on the table.</p>
+              <CompPicker cat={s.competitions} value={editComps} keep={current.comps} onChange={setEditComps} />
             </Section>
           ) : null}
           {!form && current ? (
@@ -481,6 +560,10 @@ export function ServerMatchday(props: { api: Api; onOffline?: () => void }) {
               <p class="note">{current.members} players · friends join with the code or the link</p>
               <div class="field"><span class="k">Invite link</span>
                 <button type="button" class="text-btn" onClick={() => void copyText(current.inviteLink).then((ok) => { say(ok ? 'Link copied.' : current.inviteLink); haptic('tap') })}>COPY</button></div>
+              <div class="field stack" data-field="league-comps"><span class="k">Competitions</span>
+                <span class="comp-line">{(current.comps ?? DEFAULT_COMPS).map((c) => <CompTag key={c} code={c} cat={s.competitions} />)}
+                  <span class="comp-names">{compNames(current.comps ?? DEFAULT_COMPS, s.competitions)}</span></span>
+                {current.owner && !editComps ? <button type="button" class="text-btn" data-action="edit-comps" onClick={() => setEditComps(current.comps ?? DEFAULT_COMPS)}>CHANGE</button> : null}</div>
               {current.group ? (
                 <div class="field"><span class="k">Round preview & recap in the group chat</span>
                   {current.owner

@@ -128,12 +128,12 @@ export const MATCHDAY_GUIDE: GuideSpec = {
     {
       kicker: '01',
       title: 'Call the score before kick-off',
-      body: 'Premier League and Champions League. Change a pick any time until the match starts.',
+      body: 'Premier League and Champions League, plus LaLiga, Serie A, Bundesliga and more in your leagues. Change a pick any time until the match starts.',
     },
     {
       kicker: '02',
       title: 'Exact is three, result is one',
-      body: 'Climb the worldwide table. Create a private league for friends, or join one with a code.',
+      body: 'Climb the worldwide table. Create a private league, pick the competitions it plays on, or join one with a code.',
     },
     {
       kicker: '03',
@@ -149,7 +149,9 @@ export const MATCHDAY_GUIDE: GuideSpec = {
   how: [
     'Open Picks, set a score, and save it. You can change it until kick-off.',
     'Exact score is 3 points. The right result (win, draw or loss) is 1.',
-    'Your rank appears on the worldwide table. Create a private league, or join with a code.',
+    'Your rank appears on the worldwide table, which counts the Premier League and the Champions League.',
+    'Create a private league and pick its competitions: Premier League, Champions League, LaLiga, Serie A, Bundesliga, Ligue 1, Eredivisie, Primeira Liga, Championship or Brasileirão. Its Picks, Table and Rounds use only those.',
+    'The owner can change the competitions later. It counts from the next kick-off; points already won stay.',
     'Set your time zone and optional reminders in Settings.',
     'The bot writes to this chat for results and reminders. Picks live in the app.',
   ],
@@ -187,7 +189,7 @@ export const MATCHDAY_PLUS_GUIDE: GuideSpec = {
     },
   ],
   how: [
-    'Rounds lists recent gameweeks (and Champions League matchdays) with at least one result. Tap one to read its recap.',
+    'Rounds lists recent rounds of the competitions on screen (Worldwide: Premier League and Champions League; a league: its own competitions). Tap one to read its recap.',
     'Switch between Worldwide and your leagues to see the same round for a different table.',
     'Live scores show as LIVE and are slightly delayed. Points count only at full time, after 90 minutes plus stoppage time; extra time and penalties do not count.',
     'Share opens Telegram’s chat picker with a link to the recap. “Send to my chat” puts the picture in your chat with the bot, ready to forward.',

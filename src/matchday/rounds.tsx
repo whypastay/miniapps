@@ -26,7 +26,8 @@ export interface RecapTarget { comp: string; round: number; code: string | null 
 
 /** rc_PL11 / rc_UCL6_K7QX2M (startapp) or ?rc= on the button URL. */
 export function parseRecap(raw: string | null | undefined): RecapTarget | null {
-  const m = /^rc_(PL|UCL)(\d{1,2})(?:_([A-Z0-9]{6}))?$/.exec((raw ?? '').trim())
+  const v = (raw ?? '').trim()
+  const m = /^rc_(PL|UCL)(\d{1,2})(?:_([A-Z0-9]{6}))?$/.exec(v) ?? /^rc_([A-Z0-9]{2,3})-(\d{1,2})(?:_([A-Z0-9]{6}))?$/.exec(v)
   return m ? { comp: m[1], round: Number(m[2]), code: m[3] ?? null } : null
 }
 
