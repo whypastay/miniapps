@@ -4,7 +4,7 @@ import { applyFormatLocale, cls } from './format.ts'
 import { themeBlock, themes, type ThemeId } from './theme.ts'
 import { bindBackButton, bootTelegram, closeOrLeave, haptic, nativeChromeVisible, telegramFullscreen, telegramProfile } from './telegram.ts'
 
-export type IconName = 'ledger' | 'bars' | 'people' | 'gear' | 'gift' | 'list' | 'grid' | 'cards'
+export type IconName = 'ledger' | 'bars' | 'people' | 'gear' | 'gift' | 'list' | 'grid' | 'cards' | 'split'
 
 export interface TabItem {
   id: string
@@ -62,6 +62,7 @@ const ICONS: Record<IconName, ComponentChildren> = {
   gift: <path d="M3 8h14v9H3zM2 5h16v3H2zM10 5v12M10 5c-1-3-5-3-5 0M10 5c1-3 5-3 5 0" />,
   list: <path d="M5 3h10v14H5zM8 7h4M8 10h4M8 13h2" />,
   grid: <><rect x="3" y="3" width="14" height="14" /><path d="M3 10h14M10 3v14" /></>,
+  split: <><path d="M3 5h14M3 15h14M10 5v10" /><circle cx="6" cy="10" r="1.2" /><circle cx="14" cy="10" r="1.2" /></>,
   cards: <><rect x="6" y="3" width="10" height="13" transform="rotate(8 11 9.5)" /><rect x="3" y="4" width="10" height="13" /><path d="M6 9h4M6 12h3" /></>,
 }
 

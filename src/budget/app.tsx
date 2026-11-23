@@ -30,6 +30,7 @@ const TABS = [
   { id: 'ledger', label: 'Ledger', icon: 'ledger' as const },
   { id: 'history', label: 'History', icon: 'bars' as const },
   { id: 'circle', label: 'Circle', icon: 'people' as const },
+  { id: 'split', label: 'Split', icon: 'split' as const },
   { id: 'settings', label: 'Settings', icon: 'gear' as const },
 ]
 
@@ -46,7 +47,7 @@ function parseStored(raw: string | null): BudgetState | null {
   try { return sanitize(JSON.parse(raw)) } catch { return null }
 }
 
-export function BudgetApp() {
+export function BudgetApp(props: { onSplit?: () => void } = {}) {
   const demo = useRef(demoRequested()).current
   const [state, setState] = useState<BudgetState | null>(() => (demo ? createSeed() : parseStored(readLocal(BUDGET_KEY))))
   const [place, setPlace] = useState<RecordPlace>(demo ? 'memory' : readLocal(BUDGET_KEY) ? 'device' : 'memory')
@@ -274,7 +275,7 @@ export function BudgetApp() {
   const todayAt = Math.min(100, Math.max(0, ((ledger.currentWeek - 0.5) / 52) * 100))
 
   return (
-    <Shell theme="budget" title="Budget Better" tabs={TABS} active={tab} home="ledger" onTab={setTab} actions={actions} ready={ready} screen="ledger" mast={mast}>
+    <Shell theme="budget" title="Budget Better" tabs={props.onSplit ? TABS : TABS.filter((t) => t.id !== 'split')} active={tab} home="ledger" onTab={(t) => (t === 'split' ? props.onSplit?.() : setTab(t))} actions={actions} ready={ready} screen="ledger" mast={mast}>
       {tab === 'ledger' ? (
         <>
           <section class="block hero">
