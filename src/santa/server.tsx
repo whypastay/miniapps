@@ -5,6 +5,8 @@ import { bindMainButton, haptic } from '../telegram.ts'
 import { themes } from '../theme.ts'
 import { Empty, Seal, Section, Shell } from '../ui.tsx'
 import { NameLines, wishLines } from './live.tsx'
+import { BudgetField, guessCurrency, MeetupSection, PartyDeck, PublicWishlistBody, textToItems, WishItemsEditor, WishItemsView } from './plus.tsx'
+import type { Meetup, PublicList, WishItem } from './plus.tsx'
 
 /* ---------- API shapes (santa/api.py) ---------- */
 interface GameSummary {
@@ -12,6 +14,8 @@ interface GameSummary {
   name: string
   status: 'open' | 'drawn'
   budget: string | null
+  budgetAmount?: number | null
+  budgetCurrency?: string | null
   date: string | null
   organizer: boolean
   playing: boolean
@@ -28,7 +32,14 @@ interface GameView extends GameSummary {
   minPlayers: number
   playerList: Player[]
   wishlist: string | null
-  recipient: { name: string; wishlist: string | null } | null
+  recipient: { name: string; wishlist: string | null; items?: WishItem[]; noSurprises?: string | null; listOnly?: boolean } | null
+  wishlistItems?: WishItem[]
+  noSurprises?: string | null
+  listOnly?: boolean
+  wishlistLink?: string | null
+  noRepeats?: boolean
+  meetup?: Meetup
+  drawCheck?: { ok: boolean; message: string | null; repeatsAvoidable: boolean; previousPairs: number }
   bought: boolean
   notes: Note[]
   exclusions: Array<{ a: number; b: number; aName: string; bName: string }>
@@ -42,7 +53,9 @@ const GAME_TABS = [
   { id: 'wishlist', label: 'Wishlist', icon: 'list' as const },
   { id: 'group', label: 'Group', icon: 'people' as const },
 ]
+const PARTY_TAB = { id: 'party', label: 'Party', icon: 'cards' as const }
 const ORG_TAB = { id: 'manage', label: 'Manage', icon: 'gear' as const }
+const NO_MEETUP: Meetup = { at: null, place: null, pollOpen: false, options: [], voters: 0 }
 
 function dateLabel(iso: string | null): string {
   return iso ? formatShort(parseISODate(iso)) : 'TBD'
@@ -73,9 +86,11 @@ function todayISO(): string {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
 }
 
-function launchTarget(): { join?: string; game?: number } {
+function launchTarget(): { join?: string; game?: number; wl?: string } {
   const sp = startParam() ?? ''
   const q = new URLSearchParams(location.search)
+  const wl = sp.startsWith('wl_') && !/^wl_\d+$/.test(sp) ? sp.slice(3) : q.get('wl')
+  if (wl) return { wl }
   const join = sp.startsWith('join_') ? sp.slice(5) : q.get('join')
   const g = Number(q.get('g') ?? (sp.startsWith('g') ? sp.replace(/^g_?/, '') : ''))
   return { join: join || undefined, game: Number.isInteger(g) && g > 0 ? g : undefined }
@@ -90,6 +105,7 @@ export function ServerSanta(props: { api: Api; onOffline?: () => void }) {
   const [busy, setBusy] = useState(false)
   const [fatal, setFatal] = useState<string | null>(null)
   const [pendingJoin, setPendingJoin] = useState<string | null>(null)
+  const [publicList, setPublicList] = useState<PublicList | null>(null)
 
   const say = useCallback((text: string | null) => {
     setToast(text)
@@ -127,6 +143,16 @@ export function ServerSanta(props: { api: Api; onOffline?: () => void }) {
     void (async () => {
       const target = launchTarget()
       if (target.join) setPendingJoin(target.join)
+      if (target.wl) {
+        try {
+          const [m, l] = await Promise.all([api.get<Me>('/me'), api.get<PublicList>(`/wishlists/${encodeURIComponent(target.wl)}`)])
+          if (cancel) return
+          setPublicList(l); setMe(m)
+        } catch (err) {
+          if (!cancel) setFatal(err instanceof ApiError ? err.message : 'The bot did not answer.')
+        }
+        return
+      }
       try {
         // read the list and the game to open first, then render once (no list flash on slow networks)
         const m = await api.get<Me>('/me')
@@ -175,6 +201,16 @@ export function ServerSanta(props: { api: Api; onOffline?: () => void }) {
       </Shell>
     )
   }
+  if (publicList) {
+    return (
+      <Shell theme="santa" title="Secret Santa" tabs={[]} active="x" home="x" onTab={() => undefined} ready screen="public-wishlist"
+        mast={['Wishlist', publicList.name]} toast={toast}
+        actions={[{ label: me.games.length ? 'Open my games' : 'Start your own Secret Santa', testId: 'public-cta', onClick: () => setPublicList(null) }]}>
+        <PublicWishlistBody list={publicList} />
+        <p class="note">{publicList.mine ? 'This is your list. Anyone with the link can see it.' : 'Shared from Secret Santa · Party Pack. Organise your own gift exchange in a minute.'}</p>
+      </Shell>
+    )
+  }
   if (!game) {
     return <Games me={me} api={api} run={run} busy={busy} toast={toast} pendingJoin={pendingJoin}
       onJoined={(view) => { setPendingJoin(null); setGame(view); setTab(view.playing ? 'wishlist' : 'game'); void requestWriteAccess() }}
@@ -197,13 +233,14 @@ function Games(props: {
   const [mode, setMode] = useState<'list' | 'new' | 'join'>(props.pendingJoin ? 'join' : me.games.length ? 'list' : 'new')
   const [name, setName] = useState('')
   const [budget, setBudget] = useState('')
+  const [currency, setCurrency] = useState(guessCurrency())
   const [date, setDate] = useState('')
   const [code, setCode] = useState(props.pendingJoin ?? '')
   useEffect(() => { if (props.pendingJoin) { setCode(props.pendingJoin); setMode('join') } }, [props.pendingJoin])
 
   async function create() {
     if (!name.trim()) { haptic('warning'); return }
-    const view = await run(() => api.post<GameView>('/games', { name: name.trim(), budget: budget.trim() || null, date: date || null }), 'Game created. Invite people next.')
+    const view = await run(() => api.post<GameView>('/games', { name: name.trim(), budgetAmount: budget.trim() || null, budgetCurrency: budget.trim() ? currency : null, date: date || null }), 'Game created. Invite people next.')
     if (view) props.onCreated(view)
   }
   async function join() {
@@ -230,8 +267,7 @@ function Games(props: {
         <Section title="Start a game">
           <label class="field stack"><span class="k">Name</span>
             <input type="text" maxLength={60} value={name} placeholder="Office party 2026" data-field="new-name" onInput={(e) => setName(e.currentTarget.value)} /></label>
-          <label class="field stack"><span class="k">Budget (optional)</span>
-            <input type="text" maxLength={40} value={budget} placeholder="€25" data-field="new-budget" onInput={(e) => setBudget(e.currentTarget.value)} /></label>
+          <BudgetField amount={budget} currency={currency} onAmount={setBudget} onCurrency={setCurrency} prefix="new" />
           <label class="field stack"><span class="k">Exchange date (optional)</span>
             <input type="date" min={todayISO()} value={date} data-field="new-date" onInput={(e) => setDate(e.currentTarget.value)} /></label>
           <p class="note">You join as a player. Turn that off in Manage if you only organize.</p>
@@ -281,22 +317,25 @@ function GameScreen(props: {
   const { game, api, run, tab, setTab, onGame } = props
   const gid = game.id
   const drawn = game.status === 'drawn'
-  const tabs = game.organizer ? [...GAME_TABS, ORG_TAB] : GAME_TABS
-  const [wish, setWish] = useState(game.wishlist ?? '')
+  const tabs = game.organizer ? [...GAME_TABS, PARTY_TAB, ORG_TAB] : [...GAME_TABS, PARTY_TAB]
+  const meetup = game.meetup ?? NO_MEETUP
+  const initialWish = () => ({ items: game.wishlistItems?.length ? game.wishlistItems : textToItems(game.wishlist), noSurprises: game.noSurprises ?? '', listOnly: !!game.listOnly })
+  const [wl, setWl] = useState(initialWish)
   const [wishDirty, setWishDirty] = useState(false)
   const [noteTo, setNoteTo] = useState<'giftee' | 'santa'>('giftee')
   const [note, setNote] = useState('')
   const [confirm, setConfirm] = useState<null | 'draw' | 'undo' | 'cancel' | 'leave'>(null)
-  const [edit, setEdit] = useState({ name: game.name, budget: game.budget ?? '', date: game.date ?? '' })
+  const editOf = () => ({ name: game.name, amount: game.budgetAmount != null ? String(game.budgetAmount) : '', currency: game.budgetCurrency ?? guessCurrency(), date: game.date ?? '', place: game.meetup?.place ?? '' })
+  const [edit, setEdit] = useState(editOf)
   const [pair, setPair] = useState<number[]>([])
 
-  useEffect(() => { if (!wishDirty) setWish(game.wishlist ?? '') }, [game.wishlist])
-  useEffect(() => { setEdit({ name: game.name, budget: game.budget ?? '', date: game.date ?? '' }) }, [game.name, game.budget, game.date])
+  useEffect(() => { if (!wishDirty) setWl(initialWish()) }, [game.wishlist, game.noSurprises, game.listOnly])
+  useEffect(() => { setEdit(editOf()) }, [game.name, game.budget, game.date, game.meetup?.place])
 
   const update = (view: GameView | null) => { if (view) onGame(view) }
 
   async function saveWish() {
-    const view = await run(() => api.put<GameView>(`/games/${gid}/wishlist`, { text: wish }), drawn ? 'Saved. Your Santa sees the new list.' : 'Wishlist saved.')
+    const view = await run(() => api.put<GameView>(`/games/${gid}/wishlist`, { items: wl.items.filter((it) => it.title.trim()), noSurprises: wl.noSurprises, listOnly: wl.listOnly }), drawn ? 'Saved. Your Santa sees the new list.' : 'Wishlist saved.')
     if (view) { setWishDirty(false); onGame(view) }
   }
   async function sendNote() {
@@ -362,9 +401,10 @@ function GameScreen(props: {
     actions = [{ label: 'Invite people', testId: 'invite', onClick: () => void share() }]
     if (!game.organizer && game.playing) actions.push({ label: 'Leave the game', tone: 'ghost', testId: 'leave', onClick: () => setConfirm('leave') })
   } else if (tab === 'manage') {
-    const dirty = edit.name !== game.name || edit.budget !== (game.budget ?? '') || edit.date !== (game.date ?? '')
+    const base = editOf()
+    const dirty = edit.name !== base.name || edit.amount !== base.amount || (edit.amount !== '' && edit.currency !== base.currency) || edit.date !== base.date || edit.place !== base.place
     actions = dirty
-      ? [{ label: 'Save changes', testId: 'save-game', disabled: props.busy || !edit.name.trim(), onClick: () => void run(() => api.patch<GameView>(`/games/${gid}`, { name: edit.name.trim(), budget: edit.budget.trim() || null, date: edit.date || null }), 'Saved.').then(update) }]
+      ? [{ label: 'Save changes', testId: 'save-game', disabled: props.busy || !edit.name.trim(), onClick: () => void run(() => api.patch<GameView>(`/games/${gid}`, { name: edit.name.trim(), budgetAmount: edit.amount.trim() || null, budgetCurrency: edit.amount.trim() ? edit.currency : null, date: edit.date || null, meetupPlace: edit.place.trim() || null }), 'Saved.').then(update) }]
       : [{ label: drawn ? 'Redraw names' : 'Draw names', testId: 'draw', disabled: game.players < game.minPlayers, aside: game.players < game.minPlayers ? `need ${game.minPlayers}` : undefined, onClick: () => setConfirm('draw') }]
   }
 
@@ -406,13 +446,17 @@ function GameScreen(props: {
             </div>
             {game.bought && drawn ? <span class="bought">Gift bought</span> : null}
           </Seal>
+          <MeetupSection meetup={meetup} organizer={game.organizer} playing={game.playing} busy={props.busy} players={game.players} today={todayISO()}
+            onAdd={(at) => void run(() => api.post<GameView>(`/games/${gid}/meetup/options`, { at })).then(update)}
+            onRemove={(id) => void run(() => api.del<GameView>(`/games/${gid}/meetup/options`, { id })).then(update)}
+            onPoll={(open) => void run(() => api.put<GameView>(`/games/${gid}/meetup/poll`, { open }), open ? 'Vote opened. Players got a message.' : 'Vote closed.').then(update)}
+            onVote={(option, on) => void run(() => api.post<GameView>(`/games/${gid}/meetup/vote`, { option, on })).then(update)}
+            onPick={(option) => void run(() => api.post<GameView>(`/games/${gid}/meetup/pick`, { option }), 'Meetup set. Everyone was told.').then(update)}
+            onClear={() => void run(() => api.del<GameView>(`/games/${gid}/meetup`)).then(update)} />
           {drawn && game.recipient ? (
-            <Section title="Their wishlist" aside={`${wishLines(game.recipient.wishlist).length} lines`}>
-              {game.recipient.wishlist
-                ? wishLines(game.recipient.wishlist).map((line, i) => (
-                    <article class="row" key={`${i}-${line}`}><span class="row-idx">{pad2(i + 1)}</span><span class="row-title wish-line">{line}</span><span /></article>
-                  ))
-                : <Empty title="No list yet" body={`Ask ${first} below — they won't know it's you.`} />}
+            <Section title="Their wishlist" aside={`${game.recipient.items?.length || wishLines(game.recipient.wishlist).length} ideas`}>
+              <WishItemsView items={game.recipient.items ?? []} text={game.recipient.wishlist} noSurprises={game.recipient.noSurprises ?? null} listOnly={!!game.recipient.listOnly}
+                empty={<Empty title="No list yet" body={`Ask ${first} below — they won't know it's you.`} />} />
             </Section>
           ) : !drawn ? (
             <Section title="Waiting for the draw" aside={`${game.players}/${game.minPlayers}+`}>
@@ -459,17 +503,28 @@ function GameScreen(props: {
       ) : null}
 
       {tab === 'wishlist' ? (
-        <Section title="Your wishlist" aside={game.playing ? `${wishLines(wish).length} lines` : 'Not playing'}>
-          {!game.playing ? (
-            <Empty title="Not playing" body={drawn ? 'You organize this game without a list.' : 'You organize without playing. Join below to get a giftee too.'} />
-          ) : (
-            <div class="composer">
-              <textarea class="wish-text" value={wish} maxLength={600} data-field="wishlist" placeholder={'One idea per line\nBook: Piranesi\nWarm socks, size 42'}
-                onInput={(e) => { setWish(e.currentTarget.value); setWishDirty(true) }} />
-              <p class="note">{drawn ? 'Your Santa gets a message when you save changes.' : 'Your Santa sees this after the draw.'} {wish.length}/600</p>
-            </div>
-          )}
-        </Section>
+        <>
+          <Section title="Your wishlist" aside={game.playing ? `${wl.items.filter((it) => it.title.trim()).length} ideas` : 'Not playing'}>
+            {!game.playing ? (
+              <Empty title="Not playing" body={drawn ? 'You organize this game without a list.' : 'You organize without playing. Join below to get a giftee too.'} />
+            ) : (
+              <>
+                <WishItemsEditor items={wl.items} noSurprises={wl.noSurprises} listOnly={wl.listOnly} onChange={(next) => { setWl(next); setWishDirty(true) }} />
+                <p class="note">{drawn ? 'Your Santa gets a message when you save changes.' : 'Your Santa sees this after the draw.'}</p>
+              </>
+            )}
+          </Section>
+          {game.playing && game.wishlistLink ? (
+            <Section title="Share your list">
+              <p class="note">Family and friends outside the game can see your ideas with this link (read-only).</p>
+              <div class="field"><span class="k">Public wishlist link</span>
+                <span class="party-actions">
+                  <button type="button" class="text-btn" data-action="wl-copy" onClick={() => void copyText(game.wishlistLink!).then((ok) => { props.say(ok ? 'Link copied.' : game.wishlistLink ?? null); haptic('tap') })}>COPY</button>
+                  <button type="button" class="text-btn" data-action="wl-share" onClick={() => openLink(`https://t.me/share/url?url=${encodeURIComponent(game.wishlistLink!)}&text=${encodeURIComponent('My wishlist 🎁')}`)}>SHARE</button>
+                </span></div>
+            </Section>
+          ) : null}
+        </>
       ) : null}
 
       {tab === 'group' ? (
@@ -487,27 +542,31 @@ function GameScreen(props: {
         </Section>
       ) : null}
 
+      {tab === 'party' ? <PartyDeck bot={props.me.bot} say={(t) => props.say(t)} /> : null}
+
       {tab === 'manage' && game.organizer ? (
         <>
           <Section title="Game">
             <label class="field stack"><span class="k">Name</span>
               <input type="text" maxLength={60} value={edit.name} data-field="edit-name" onInput={(e) => setEdit({ ...edit, name: e.currentTarget.value })} /></label>
-            <label class="field stack"><span class="k">Budget</span>
-              <input type="text" maxLength={40} value={edit.budget} placeholder="—" onInput={(e) => setEdit({ ...edit, budget: e.currentTarget.value })} /></label>
+            <BudgetField amount={edit.amount} currency={edit.currency} onAmount={(amount) => setEdit({ ...edit, amount })} onCurrency={(currency) => setEdit({ ...edit, currency })} prefix="edit" />
             <label class="field stack"><span class="k">Exchange date</span>
               <input type="date" min={todayISO()} value={edit.date} onInput={(e) => setEdit({ ...edit, date: e.currentTarget.value })} /></label>
+            <label class="field stack"><span class="k">Meetup place (optional)</span>
+              <input type="text" maxLength={120} value={edit.place} placeholder="Anna's flat, 7th floor" data-field="edit-place" onInput={(e) => setEdit({ ...edit, place: e.currentTarget.value })} /></label>
+            <p class="note">Set the meetup time with a vote on the Game tab.</p>
           </Section>
           {!drawn && game.playerList.length >= 2 ? (
             <Section title="Never pair" aside={`${game.exclusions.length}`}>
-              <p class="note">Pick two people who should not gift each other (couples, for example).</p>
+              <p class="note">Pick two people (a couple) or a whole household. They will never draw each other.</p>
               <div class="picks-wrap">
                 {game.playerList.filter((p) => p.id).map((p) => (
                   <button type="button" class="choice" key={p.id} aria-pressed={pair.includes(p.id!)}
-                    onClick={() => { haptic('select'); setPair((cur) => cur.includes(p.id!) ? cur.filter((x) => x !== p.id) : [...cur, p.id!].slice(-2)) }}>{p.name}</button>
+                    onClick={() => { haptic('select'); setPair((cur) => cur.includes(p.id!) ? cur.filter((x) => x !== p.id) : [...cur, p.id!].slice(-12)) }}>{p.name}</button>
                 ))}
               </div>
-              {pair.length === 2 ? (
-                <button type="button" class="text-btn" data-action="add-excl" onClick={() => void run(() => api.post<GameView>(`/games/${gid}/exclusions`, { a: pair[0], b: pair[1] }), 'Saved: they will not be paired.').then((v) => { update(v); setPair([]) })}>ADD THIS PAIR</button>
+              {pair.length >= 2 ? (
+                <button type="button" class="text-btn" data-action="add-excl" onClick={() => void run(() => api.post<GameView>(`/games/${gid}/exclusions`, { group: pair }), pair.length === 2 ? 'Saved: they will not be paired.' : 'Saved: this household never draws each other.').then((v) => { update(v); if (v) setPair([]) })}>{pair.length === 2 ? 'ADD THIS PAIR' : `ADD HOUSEHOLD OF ${pair.length}`}</button>
               ) : null}
               {game.exclusions.map((x) => (
                 <article class="row" key={`${x.a}-${x.b}`}>
@@ -519,6 +578,16 @@ function GameScreen(props: {
           ) : null}
           <Section title="Draw">
             <div class="field"><span class="k">Players</span><span class="code">{game.players} / min {game.minPlayers}</span></div>
+            {!drawn && game.drawCheck && game.players >= game.minPlayers ? (
+              game.drawCheck.ok
+                ? <p class="note draw-ok" data-field="draw-check">Ready to draw. {game.exclusions.length ? 'All never-pair rules fit.' : ''}{game.noRepeats && game.drawCheck.previousPairs ? (game.drawCheck.repeatsAvoidable ? ` Last game's ${game.drawCheck.previousPairs} pairs will not repeat.` : ' Some pairs from last game may repeat.') : ''}</p>
+                : <p class="draw-warn" data-field="draw-check">{game.drawCheck.message} Remove a never-pair rule or invite more people.</p>
+            ) : null}
+            {!drawn ? (
+              <div class="field"><span class="k">No repeats from earlier games</span>
+                <button type="button" class="choice" aria-pressed={!!game.noRepeats} data-field="no-repeats"
+                  onClick={() => void run(() => api.patch<GameView>(`/games/${gid}`, { noRepeats: !game.noRepeats })).then((v) => { update(v); haptic('select') })}>{game.noRepeats ? 'ON' : 'OFF'}</button></div>
+            ) : null}
             {!game.playing && !drawn ? (
               <div class="field"><span class="k">Play too</span>
                 <button type="button" class="text-btn" onClick={() => void run(() => api.post<GameView>(`/games/${gid}/selfjoin`), 'You are playing now.').then(update)}>JOIN AS PLAYER</button></div>

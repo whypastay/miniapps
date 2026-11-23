@@ -1,0 +1,82 @@
+{
+  "icebreakers": {
+    "title": "Icebreakers", "emoji": "🧊",
+    "cards": [
+      "What's the best gift you've ever received?",
+      "What's a holiday tradition from your family that others find strange?",
+      "If you could spend the holidays anywhere in the world, where would it be?",
+      "What's the worst gift you've ever had to pretend to love?",
+      "What's your favourite holiday food, and who makes it best?",
+      "What song instantly puts you in a festive mood?",
+      "What's one thing you want to do before the year ends?",
+      "What was the highlight of your year?",
+      "Which movie do you rewatch every winter?",
+      "What did you believe as a kid about the holidays that turned out to be false?",
+      "What's the most useful thing you learned this year?",
+      "If your year was a movie, what would it be called?",
+      "Who here would you trust to choose a gift for your mum?",
+      "What's a small thing that made you really happy recently?",
+      "What's your New Year's resolution, and how long will it last?"
+    ]
+  },
+  "wyr": {
+    "title": "Would you rather", "emoji": "🤔",
+    "cards": [
+      "Would you rather get one big gift or ten small ones?",
+      "Would you rather spend the holidays at the beach or in the snow?",
+      "Would you rather give up chocolate or cheese for a year?",
+      "Would you rather wrap 100 presents or cook dinner for 20 people?",
+      "Would you rather know every gift in advance or never get to choose your own?",
+      "Would you rather sing karaoke in front of everyone here or dance alone for one minute?",
+      "Would you rather have a holiday that lasts a month or a bonus that's a month's pay?",
+      "Would you rather wear an ugly sweater all day or a Santa hat all week?",
+      "Would you rather only eat leftovers for a week or skip dessert for a month?",
+      "Would you rather be the Secret Santa for your boss or your ex?",
+      "Would you rather lose your phone for a day or your wallet for an hour?",
+      "Would you rather read minds or be invisible at this party?",
+      "Would you rather receive a handwritten letter or an expensive gadget?",
+      "Would you rather travel back to last New Year's Eve or skip ahead to next one?",
+      "Would you rather host the party every year or never be invited?"
+    ]
+  },
+  "truth": {
+    "title": "Truth or dare", "emoji": "🎯",
+    "cards": [
+      "Truth: Have you ever regifted a present? Who got it?",
+      "Dare: Do your best impression of someone in this room until someone guesses who.",
+      "Truth: What's the most embarrassing thing you've done at a party?",
+      "Dare: Sing the first line of a holiday song in a dramatic opera voice.",
+      "Truth: Who here do you think got you as their Secret Santa?",
+      "Dare: Give a 30-second toast to the person on your left.",
+      "Truth: What's the last thing you searched on your phone?",
+      "Dare: Wear something silly that the group picks for the next three rounds.",
+      "Truth: Have you ever peeked at a gift before you were supposed to?",
+      "Dare: Tell a joke. If nobody laughs, tell another one.",
+      "Truth: What's a secret talent nobody here knows about?",
+      "Dare: Let the person on your right post a (kind) story from your phone.",
+      "Truth: What's the most you've ever spent on a gift for someone?",
+      "Dare: Talk like a news reporter until your next turn.",
+      "Truth: What's one thing you'd change about this year if you could?"
+    ]
+  },
+  "family": {
+    "title": "Family friendly", "emoji": "👨‍👩‍👧",
+    "cards": [
+      "Name three things that are red and green.",
+      "If you were a holiday decoration, which one would you be and why?",
+      "What would you do if you were Santa for one day?",
+      "Which animal would make the best reindeer?",
+      "Describe your perfect snow day.",
+      "If you could invent a new holiday, what would people celebrate?",
+      "Act out your favourite holiday activity. Everyone else guesses.",
+      "What would you put in a gift for someone who has everything?",
+      "What's the funniest thing that happened in our family this year?",
+      "Hum a holiday song. Who can name it first?",
+      "If your pet could talk, what would it ask for as a gift?",
+      "What's one kind thing someone here did for you this year?",
+      "Make up a new name for one of Santa's reindeer.",
+      "If you could have any superpower just for the holidays, what would it be?",
+      "Everyone says one word to build a holiday story, going around the room."
+    ]
+  }
+}

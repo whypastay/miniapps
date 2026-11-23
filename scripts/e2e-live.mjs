@@ -75,11 +75,13 @@ async function tab(page, id) { await page.click(`[data-tab="${id}"]`); await sle
 async function act(page, id) { await page.waitForSelector(`[data-action="${id}"]:not([disabled])`, { timeout: 8000 }); await page.click(`[data-action="${id}"]`); await sleep(400) }
 
 // ---------------------------------------------------------------- Santa
+let bobWl = ''
 async function santa() {
   const a = await open('santa', 'alice')
   check('santa: new user lands on the create form', (await screen(a)) === 'games-new', await screen(a))
   await type(a, '[data-field="new-name"]', 'E2E Office Party')
-  await type(a, '[data-field="new-budget"]', '€20')
+  await type(a, '[data-field="new-budget"]', '1500')
+  await a.select('[data-field="new-currency"]', 'INR')
   const d = new Date(Date.now() + 20 * 86400e3).toISOString().slice(0, 10)
   await a.$eval('[data-field="new-date"]', (el, v) => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })) }, d)
   await shot(a, 'santa-create')
@@ -99,9 +101,29 @@ async function santa() {
     check(`santa: ${who} sees the join form prefilled`, (await screen(p)) === 'games-join')
     await act(p, 'join')
     await waitScreen(p, 'game-wishlist')
-    await type(p, '[data-field="wishlist"]', `${who} wants: a good book\nwarm socks`)
-    if (who === 'bob') await shot(p, 'santa-wishlist')
+    await act(p, 'add-item')
+    await type(p, '[data-field="item-0"]', 'A good book')
+    await act(p, 'add-item')
+    await type(p, '[data-field="item-1"]', 'Warm socks')
+    await act(p, 'details-1')
+    await type(p, '[data-field="item-1-size"]', 'M')
+    await type(p, '[data-field="item-1-link"]', 'https://example.com/socks')
+    if (who === 'bob') {
+      await type(p, '[data-field="no-surprises"]', 'No candles, allergic to wool')
+      await p.click('[data-field="list-only-toggle"]')
+      await shot(p, 'santa-wishlist')
+    }
     await act(p, 'save-wish')
+    await sleep(400)
+    const mine = (await call('santa', who, 'GET', '/me')).data.games[0].id
+    const wv = (await call('santa', who, 'GET', `/games/${mine}`)).data
+    check(`santa: ${who} saved 2 wishlist items`, wv.wishlistItems?.length === 2 && wv.wishlistItems[1].size === 'M', JSON.stringify(wv.wishlistItems))
+    if (who === 'bob') {
+      check('santa: bob has a public wishlist link', /startapp=wl_|start=wl_/.test(wv.wishlistLink ?? ''), wv.wishlistLink)
+      await p.evaluate(() => window.scrollTo(0, document.body.scrollHeight)); await sleep(150)
+      await shot(p, 'santa-wishlist-share')
+      bobWl = (wv.wishlistLink ?? '').split('wl_')[1]
+    }
     await p.close()
   }
   // organizer draws in the app
@@ -112,6 +134,54 @@ async function santa() {
   const players = await a.$$eval('.row', (rows) => rows.length)
   await shot(a, 'santa-group')
   check('santa: reopening lands in the game', (await screen(a)).startsWith('game-'), await screen(a))
+  // meetup poll: organizer suggests two times, opens the vote; bob and cara vote; organizer picks
+  await tab(a, 'game')
+  const d1 = new Date(Date.now() + 18 * 86400e3).toISOString().slice(0, 10)
+  for (const t of ['19:00', '20:30']) {
+    await a.$eval('[data-field="meetup-day"]', (el, v) => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })) }, d1)
+    await a.$eval('[data-field="meetup-time"]', (el, v) => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })) }, t)
+    await act(a, 'add-option')
+  }
+  await act(a, 'poll')
+  let gv0 = (await call('santa', 'alice', 'GET', `/games/${(await call('santa', 'alice', 'GET', '/me')).data.games[0].id}`)).data
+  check('santa: meetup poll open with 2 options', gv0.meetup?.pollOpen && gv0.meetup.options.length === 2, JSON.stringify(gv0.meetup))
+  for (const who of ['bob', 'cara']) {
+    const p = await open('santa', who)
+    await p.waitForSelector('[data-action="vote"]', { timeout: 8000 })
+    const btns = await p.$$('[data-action="vote"]')
+    await btns[who === 'bob' ? 1 : 0].click(); await sleep(500)
+    if (who === 'bob') { const again = await p.$$('[data-action="vote"]'); await again[0].click(); await sleep(500) }
+    if (who === 'cara') await shot(p, 'santa-meetup-vote')
+    await p.close()
+  }
+  await a.reload({ waitUntil: 'domcontentloaded' }); await a.waitForSelector('[data-ready="true"]'); await sleep(400)
+  await tab(a, 'game')
+  await act(a, 'pick')
+  await sleep(400)
+  gv0 = (await call('santa', 'alice', 'GET', `/games/${gv0.id}`)).data
+  check('santa: meetup picked and exchange date set', Boolean(gv0.meetup?.at) && gv0.date === d1, JSON.stringify(gv0.meetup))
+  check('santa: budget has currency for everyone', gv0.budget === '₹1,500', gv0.budget)
+  await shot(a, 'santa-meetup')
+  // party pack
+  await tab(a, 'party')
+  await a.click('[data-deck="truth"]'); await sleep(150)
+  const card = await a.$eval('[data-field="party-card"] p', (el) => el.textContent)
+  check('santa: party pack shows a card', card.length > 10, card)
+  await shot(a, 'santa-party')
+  // household rule making the draw impossible -> warning; then remove it
+  await tab(a, 'manage')
+  const chips = await a.$$('.picks-wrap .choice')
+  for (const c of chips.slice(1, 3)) await c.click()
+  await act(a, 'add-excl')
+  await sleep(400)
+  const warn = await a.$eval('[data-field="draw-check"]', (el) => `${el.className}|${el.textContent}`).catch(() => '')
+  check('santa: impossible never-pair config is reported before drawing', warn.startsWith('draw-warn'), warn)
+  await a.$eval('[data-field="draw-check"]', (el) => el.scrollIntoView({ block: 'center' })).catch(() => undefined)
+  await sleep(200)
+  await shot(a, 'santa-impossible')
+  const ex = (await call('santa', 'alice', 'GET', `/games/${gv0.id}`)).data.exclusions[0]
+  await call('santa', 'alice', 'DELETE', `/games/${gv0.id}/exclusions`, { a: ex.a, b: ex.b })
+  await a.reload({ waitUntil: 'domcontentloaded' }); await a.waitForSelector('[data-ready="true"]'); await sleep(400)
   await tab(a, 'manage')
   await shot(a, 'santa-manage')
   await act(a, 'draw')
@@ -149,6 +219,25 @@ async function santa() {
   await sleep(600)
   const b2 = (await call('santa', 'bob', 'GET', `/games/${gid}`)).data
   check('santa: santa receives the reply in app', b2.notes.some((n) => n.dir === 'fromGiftee' && n.text.includes('42')), JSON.stringify(b2.notes))
+  // santa of bob sees items, the no-surprises note and the stick-to-list flag
+  const santaOfBob = ['alice', 'cara'].find((w) => w !== giftee || giftee !== 'bob')
+  for (const who of ['alice', 'cara']) {
+    const v = (await call('santa', who, 'GET', `/games/${gid}`)).data
+    if (v.recipient?.name?.startsWith('Bob')) {
+      check('santa: bob\'s santa sees items + no-surprises', v.recipient.items.length === 2 && v.recipient.listOnly && /candles/.test(v.recipient.noSurprises ?? ''), JSON.stringify(v.recipient))
+      const sp = await open('santa', who)
+      await shot(sp, 'santa-giftee-list')
+      await sp.close()
+    }
+  }
+  void santaOfBob
+  // public wishlist link opened by someone else
+  if (bobWl) {
+    const pw = await open('santa', 'cara', `&wl=${bobWl}`)
+    check('santa: public wishlist screen opens', (await screen(pw)) === 'public-wishlist', await screen(pw))
+    await shot(pw, 'santa-public-wishlist')
+    await pw.close()
+  }
   await g.close(); await b.close(); await a.close()
   return gid
 }
