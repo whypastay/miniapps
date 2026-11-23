@@ -128,15 +128,21 @@ export function ServerSanta(props: { api: Api; onOffline?: () => void }) {
       const target = launchTarget()
       if (target.join) setPendingJoin(target.join)
       try {
-        const m = await refreshMe()
+        // read the list and the game to open first, then render once (no list flash on slow networks)
+        const m = await api.get<Me>('/me')
         if (cancel) return
-        if (target.join) {
-          // handled by the join form
-        } else if (target.game && m.games.some((g) => g.id === target.game)) {
-          await openGame(target.game)
-        } else if (m.games.length === 1) {
-          await openGame(m.games[0].id)
+        const pick = target.join ? undefined
+          : target.game && m.games.some((g) => g.id === target.game) ? target.game
+            : m.games.length === 1 ? m.games[0].id : undefined
+        if (pick) {
+          try {
+            const view = await api.get<GameView>(`/games/${pick}`)
+            if (cancel) return
+            setGame(view)
+            setTab('game')
+          } catch { /* show the list */ }
         }
+        setMe(m)
       } catch (err) {
         if (cancel) return
         // backend unreachable: fall back to the snapshot the bot put in the link (read-only)

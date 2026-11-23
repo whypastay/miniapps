@@ -6,6 +6,7 @@ import puppeteer from 'puppeteer-core'
 const base = process.env.BASE_URL ?? 'http://127.0.0.1:43123'
 const api = process.env.API ?? 'http://127.0.0.1:18790'
 const out = process.env.SHOT_DIR ?? '/workspace/miniapps-deploy/shots'
+const prefix = process.env.SHOT_PREFIX ?? 'full'
 const chrome = process.env.CHROME ?? '/usr/bin/google-chrome'
 const init = JSON.parse(await readFile(process.env.INIT_FILE ?? '/tmp/e2e/init.json', 'utf8'))
 const failures = []
@@ -49,7 +50,7 @@ async function open(svc, who, query = '') {
 }
 
 const screen = (page) => page.$eval('[data-screen]', (el) => el.getAttribute('data-screen'))
-async function shot(page, name) { await mkdir(out, { recursive: true }); await page.screenshot({ path: `${out}/full-${name}.png` }) }
+async function shot(page, name) { await mkdir(out, { recursive: true }); await page.screenshot({ path: `${out}/${prefix}-${name}.png` }) }
 async function overflow(page, label) {
   const box = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth }))
   check(`${label} no horizontal overflow`, box.sw <= box.cw + 1, `scroll ${box.sw} client ${box.cw}`)
