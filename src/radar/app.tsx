@@ -1,8 +1,10 @@
 /* RemoteRadar — remote jobs open to your country, and a scam check. RemotelyHired network. */
-import { useCallback, useEffect, useState } from 'preact/hooks'
+import type { ComponentChildren } from 'preact'
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import { Api, ApiError, connect, discoverBase, openLink, requestWriteAccess, startParam } from '../api.ts'
 import { cls, pad2 } from '../format.ts'
 import { haptic, inTelegram } from '../telegram.ts'
+import { GuideScope, RADAR_GUIDE } from '../guide.tsx'
 import { Empty, RadarSweep, Section, Shell, Stats, type Action } from '../ui.tsx'
 import {
   day, LEVEL_LABEL, localTz, openExternal, radarTarget,
@@ -143,20 +145,32 @@ export function RadarApp() {
     })
   }, [api, run])
 
+  const launched = useRef(radarTarget(startParam()))
+  const hint = launched.current.job
+    ? 'Someone shared a job with you. Open it below — the short guide is under ? if you want it later.'
+    : launched.current.check
+      ? 'Someone shared a scam check with you. Read it below — the short guide is under ? if you want it later.'
+      : null
+  const guide = (node: ComponentChildren) => (
+    <GuideScope theme="radar" spec={RADAR_GUIDE} api={api} ready={view !== 'loading'} onboarded={Boolean(me?.onboarded)} hint={hint}>
+      {node}
+    </GuideScope>
+  )
+
   /* ------------------------------------------------------------ screens */
   if (view === 'loading') {
-    return <Shell theme={T} title={TITLE} tabs={[]} active="x" home="x" onTab={() => undefined} ready={false} screen="radar-loading" mast={['RemoteRadar', 'Scanning']}>
+    return guide(<Shell theme={T} title={TITLE} tabs={[]} active="x" home="x" onTab={() => undefined} ready={false} screen="radar-loading" mast={['RemoteRadar', 'Scanning']}>
       <p class="loading">Scanning today's listings</p>
-    </Shell>
+    </Shell>)
   }
   if (view === 'fatal') {
-    return <Shell theme={T} title={TITLE} tabs={[]} active="x" home="x" onTab={() => undefined} ready screen="radar-error" mast={['RemoteRadar', 'Offline']}
+    return guide(<Shell theme={T} title={TITLE} tabs={[]} active="x" home="x" onTab={() => undefined} ready screen="radar-error" mast={['RemoteRadar', 'Offline']}
       actions={[{ label: 'Try again', testId: 'retry', onClick: () => location.reload() }]}>
       <Section title="Not available right now"><p class="note">{fatal}</p></Section>
-    </Shell>
+    </Shell>)
   }
   if (view === 'shared-check' && shared) {
-    return <SharedCheck pub={shared} me={me}
+    return guide(<SharedCheck pub={shared} me={me}
       onGet={() => {
         if (!api || !me) { openLink(shared.appLink); return }
         if (!me.prefs.country) { setView('setup'); return }
@@ -165,16 +179,16 @@ export function RadarApp() {
       onCheck={() => {
         if (!api || !me) { openLink(shared.appLink); return }
         setTab('check'); setView(me.prefs.country ? 'tabs' : 'setup')
-      }} />
+      }} />)
   }
-  if (!api || !me) return null
+  if (!api || !me) return guide(null)
 
   if (view === 'setup') {
-    return <SetupScreen meta={me.meta} prefs={me.prefs} busy={busy} toast={toast} onBack={job ? () => setView('job') : undefined}
-      onSave={(p) => void savePrefs(p).then((out) => { if (out) { setView('tabs'); setTab(tab === 'check' ? 'check' : 'feed'); haptic('success') } })} />
+    return guide(<SetupScreen meta={me.meta} prefs={me.prefs} busy={busy} toast={toast} onBack={job ? () => setView('job') : undefined}
+      onSave={(p) => void savePrefs(p).then((out) => { if (out) { setView('tabs'); setTab(tab === 'check' ? 'check' : 'feed'); haptic('success') } })} />)
   }
   if (view === 'job' && job) {
-    return <JobScreen job={job} me={me} busy={busy} toast={toast}
+    return guide(<JobScreen job={job} me={me} busy={busy} toast={toast}
       onBack={() => { setView(jobBack === 'setup' || !me.prefs.country ? 'setup' : 'tabs'); if (jobBack !== 'setup') setTab(jobBack) }}
       onGet={() => setView('setup')}
       onSave={() => void run(() => job.saved ? api.del<{ saved: boolean; savedCount: number }>(`/jobs/${job.token}/save`) : api.post<{ saved: boolean; savedCount: number }>(`/jobs/${job.token}/save`),
@@ -183,14 +197,14 @@ export function RadarApp() {
         setJob({ ...job, saved: r.saved }); setMe({ ...me, savedCount: r.savedCount })
         if (feed) setFeed({ ...feed, jobs: feed.jobs.map((x) => x.token === job.token ? { ...x, saved: r.saved } : x) })
       })}
-      onShare={() => void run(() => api.post<{ shareUrl: string }>(`/jobs/${job.token}/share`)).then((r) => { if (r) openLink(r.shareUrl) })} />
+      onShare={() => void run(() => api.post<{ shareUrl: string }>(`/jobs/${job.token}/share`)).then((r) => { if (r) openLink(r.shareUrl) })} />)
   }
   if (view === 'result' && check) {
-    return <ResultScreen res={check} toast={toast}
+    return guide(<ResultScreen res={check} toast={toast}
       onBack={() => { setView('tabs'); setTab('check') }}
       onAnother={() => { setDraft(''); setCheck(null); setView('tabs'); setTab('check') }}
       onShare={() => openLink(check.shareUrl)}
-      onJob={check.result.job ? () => openJob(check.result.job!, 'check') : undefined} />
+      onJob={check.result.job ? () => openJob(check.result.job!, 'check') : undefined} />)
   }
 
   // tabs
@@ -218,11 +232,11 @@ export function RadarApp() {
     body = <SettingsTab me={me} busy={busy} onSave={(p, ok) => void savePrefs(p, ok)}
       onDelete={() => void run(() => api.del('/me'), 'Your data is deleted.').then((r) => { if (r) { setMe({ ...me, prefs: { ...me.prefs, country: null, countryName: null, roles: [], levels: [], alert: { on: false, hour: 9, tz: null } }, savedCount: 0 }); setView('setup') } })} />
   }
-  return (
+  return guide((
     <Shell theme={T} title={TITLE} tabs={TABS} active={tab} home="feed" onTab={setTab} ready screen={`radar-${tab}`} mast={mast} actions={actions} toast={toast}>
       {body}
     </Shell>
-  )
+  ))
 }
 
 /* ------------------------------------------------------------ setup */
@@ -328,7 +342,7 @@ function FeedTab(props: { feed: FeedPage | null; prefs: Prefs; meta: Meta; q: st
       </label>
       <Section title="Listings" aside={f && f.total > f.jobs.length ? `${f.jobs.length} of ${f.total}` : undefined}>
         {f && f.jobs.length ? f.jobs.map((j, i) => <JobRow key={j.token} job={j} i={i} onOpen={() => props.onOpen(j)} />)
-          : <Empty title={props.q ? 'No matches' : 'Nothing open to you today'} body={props.q ? 'Try a shorter word.' : 'Fewer filters will widen the radar. New listings arrive every day.'} />}
+          : <Empty title={props.q ? 'No matches' : 'Nothing open to you today'} body={props.q ? 'Try a shorter word, or clear the search.' : 'Open Settings to widen your country, role or level. New listings arrive every day.'} />}
         {f && f.total > f.jobs.length ? <button type="button" class="text-btn radar-more" data-action="more" disabled={props.busy} onClick={props.onMore}>Show more</button> : null}
       </Section>
       <p class="note">Listings from {props.meta.sources.map((s) => s.name).join(', ')}. You apply on their pages; nobody legit charges a fee to hire you.</p>
@@ -341,7 +355,7 @@ function SavedTab(props: { jobs: Job[] | null; onOpen: (j: Job) => void; onFeed:
     <>
       <Section title="Saved jobs" aside={props.jobs ? `${props.jobs.length}` : ''}>
         {props.jobs && props.jobs.length ? props.jobs.map((j, i) => <JobRow key={j.token} job={{ ...j, saved: false }} i={i} onOpen={() => props.onOpen(j)} />)
-          : <Empty title="Nothing saved yet" body="Tap a job, then Save, to keep it here." />}
+          : <Empty title="Nothing saved yet" body="Open a job from the feed, then Save, to keep it here." />}
       </Section>
       {props.jobs && props.jobs.length ? <p class="note">Listings close. Apply soon on the board that listed the job.</p> : <button type="button" class="text-btn radar-more" onClick={props.onFeed}>Browse the feed</button>}
     </>

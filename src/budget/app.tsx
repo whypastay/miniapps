@@ -1,3 +1,4 @@
+import type { ComponentChildren } from 'preact'
 import { useEffect, useRef, useState } from 'preact/hooks'
 import { CURRENCIES, formatDay, formatMoney, formatMonth, pad2, parseISODate, startOfDay, symbol, toISODate, type Currency } from '../format.ts'
 import { demoRequested } from '../mode.ts'
@@ -5,6 +6,7 @@ import { loadRecord, placeLabel, readLocal, saveRecord, type RecordPlace } from 
 import { bindMainButton, haptic, shareWithFriend } from '../telegram.ts'
 import { Api, ApiError, connect, openLink, requestWriteAccess } from '../api.ts'
 import { themes } from '../theme.ts'
+import { GuideScope, BUDGET_GUIDE } from '../guide.tsx'
 import { Check, Empty, Section, Shell, Stats, sentence, type Action } from '../ui.tsx'
 import {
   BUDGET_KEY,
@@ -252,16 +254,22 @@ export function BudgetApp(props: { onSplit?: () => void } = {}) {
     }
   }
 
+  const guide = (node: ComponentChildren, isReady = ready) => (
+    <GuideScope theme="budget" spec={BUDGET_GUIDE} api={api.current} ready={isReady} onboarded={Boolean(server?.onboarded)}>
+      {node}
+    </GuideScope>
+  )
+
   if (!ready) {
-    return (
+    return guide((
       <Shell theme="budget" title="Budget Better" tabs={[]} active="ledger" home="ledger" onTab={setTab} ready={false} screen="loading" mast={['The 52-week ledger', 'Reading']}>
         <p class="loading">Reading the ledger</p>
       </Shell>
-    )
+    ), false)
   }
 
   if (!state || !ledger) {
-    return <Onboarding onOpen={commit} />
+    return guide(<Onboarding onOpen={commit} />)
   }
 
   const recent = ledger.entries.filter((entry) => entry.status === 'paid').slice().reverse().slice(0, 2)
@@ -274,7 +282,7 @@ export function BudgetApp(props: { onSplit?: () => void } = {}) {
   const mast: [string, string] = [`The 52-week ledger`, `${state.year} · ${chip}`]
   const todayAt = Math.min(100, Math.max(0, ((ledger.currentWeek - 0.5) / 52) * 100))
 
-  return (
+  return guide((
     <Shell theme="budget" title="Budget Better" tabs={props.onSplit ? TABS : TABS.filter((t) => t.id !== 'split')} active={tab} home="ledger" onTab={(t) => (t === 'split' ? props.onSplit?.() : setTab(t))} actions={actions} ready={ready} screen="ledger" mast={mast}>
       {tab === 'ledger' ? (
         <>
@@ -334,7 +342,7 @@ export function BudgetApp(props: { onSplit?: () => void } = {}) {
             </div>
           </Section>
           <Section title="Recent entries" aside={<button type="button" class="text-btn" onClick={() => setTab('history')}>All →</button>}>
-            {recent.length === 0 ? <Empty title="No marks yet" body="Tap a week in the grid, or log this week below." /> : recent.map((entry) => (
+            {recent.length === 0 ? <Empty title="No marks yet" body="Tap a week in the grid to mark it set aside, or use the button below for this week." /> : recent.map((entry) => (
               <Entry key={entry.week} entry={entry} currency={state.currency} onClick={() => setTab('history')} />
             ))}
           </Section>
@@ -375,7 +383,7 @@ export function BudgetApp(props: { onSplit?: () => void } = {}) {
         />
       ) : null}
     </Shell>
-  )
+  ))
 }
 
 function actionsFor(
@@ -429,7 +437,7 @@ function Entry(props: { entry: WeekEntry; currency: Currency; onClick: () => voi
 }
 
 function History(props: { entries: WeekEntry[]; currency: Currency; onToggle: (week: number) => void }) {
-  if (props.entries.length === 0) return <Empty title="No marks" body="The grid is clear. Log a week from the ledger." />
+  if (props.entries.length === 0) return <Empty title="No marks yet" body="Open the ledger and tap a week to mark it set aside." />
   const groups: Array<{ label: string; rows: WeekEntry[] }> = []
   for (const entry of props.entries) {
     const label = formatMonth(parseISODate(entry.due))
@@ -654,7 +662,7 @@ function Settings(props: {
 }
 
 interface Reminder { enabled: boolean; weekday: number | null; hour: number | null; minute: number; timezone?: string | null }
-interface ServerInfo { state: unknown; skipped: number[]; reminder: Reminder; currencyRaw: string | null; referrals: number; refLink: string; shareUrl: string; bot: string }
+interface ServerInfo { state: unknown; skipped: number[]; reminder: Reminder; currencyRaw: string | null; referrals: number; refLink: string; shareUrl: string; bot: string; onboarded?: boolean }
 type SyncState = 'local' | 'saving' | 'synced' | 'offline'
 const SYNC_LABEL: Record<SyncState, string> = { local: 'THIS DEVICE', saving: 'SAVING', synced: 'SYNCED WITH THE BOT', offline: 'OFFLINE · WILL RETRY' }
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']

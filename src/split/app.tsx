@@ -1,8 +1,10 @@
 /* Ledger Split — who owes whom, inside the Budget Better Mini App. */
-import { useCallback, useEffect, useMemo, useState } from 'preact/hooks'
+import type { ComponentChildren } from 'preact'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { Api, ApiError, connect, copyText, discoverBase, openLink, requestWriteAccess, startParam } from '../api.ts'
 import { formatShort, pad2, parseISODate } from '../format.ts'
 import { haptic } from '../telegram.ts'
+import { BUDGET_GUIDE, GuideScope } from '../guide.tsx'
 import { Empty, Section, Shell, Stats, type Action } from '../ui.tsx'
 import {
   balanceLine, currencyCodes, decimals, FEATURED, firstName, majorString, money, previewSplit, setCurrencies, toMinor,
@@ -127,53 +129,65 @@ export function SplitApp(props: { onLedger?: () => void }) {
     if (api) void api.get<ListResponse>('/split').then(setList).catch(() => undefined)
   }, [api])
 
+  const launched = useRef(splitTarget())
+  const hint = launched.current?.join
+    ? 'You were invited to a shared ledger. Join below — the short guide is under ? if you want it later.'
+    : launched.current?.pub
+      ? 'This is a public summary. Start your own from the button below, or open ? for a short guide.'
+      : null
+  const guide = (node: ComponentChildren) => (
+    <GuideScope theme="budget" spec={BUDGET_GUIDE} api={api} ready={view !== 'loading'} onboarded={Boolean(list?.onboarded)} hint={hint}>
+      {node}
+    </GuideScope>
+  )
+
   /* ------------------------------------------------------------ screens */
   if (view === 'loading') {
-    return <Shell theme="budget" title="Ledger Split" tabs={[]} active="x" home="x" onTab={() => undefined} ready={false} screen="split-loading" mast={['Ledger Split', 'Reading']}>
+    return guide(<Shell theme="budget" title="Ledger Split" tabs={[]} active="x" home="x" onTab={() => undefined} ready={false} screen="split-loading" mast={['Ledger Split', 'Reading']}>
       <p class="loading">Reading your groups</p>
-    </Shell>
+    </Shell>)
   }
   if (view === 'fatal') {
-    return <Shell theme="budget" title="Ledger Split" tabs={[]} active="x" home="x" onTab={() => undefined} ready screen="split-error" mast={['Ledger Split', 'Offline']}
+    return guide(<Shell theme="budget" title="Ledger Split" tabs={[]} active="x" home="x" onTab={() => undefined} ready screen="split-error" mast={['Ledger Split', 'Offline']}
       actions={[{ label: 'Try again', testId: 'retry', onClick: () => location.reload() }]}>
       <Section title="Not available right now"><p class="note">{fatal}</p></Section>
-    </Shell>
+    </Shell>)
   }
-  if (view === 'public' && pub) return <PublicScreen pub={pub} />
-  if (!api) return null
+  if (view === 'public' && pub) return guide(<PublicScreen pub={pub} />)
+  if (!api) return guide(null)
 
   if (view === 'join' && invite) {
-    return <JoinScreen invite={invite} busy={busy} toast={toast}
+    return guide(<JoinScreen invite={invite} busy={busy} toast={toast}
       onJoin={(claim) => void run(() => api.post<Group>('/split/join', { code: inviteCode, claim }), 'You are in.').then((g) => { if (g) { showGroup(g, 'ledger'); void requestWriteAccess() } })}
-      onBack={list?.groups.length ? toList : undefined} />
+      onBack={list?.groups.length ? toList : undefined} />)
   }
   if (view === 'new') {
-    return <NewGroup busy={busy} toast={toast} hasGroups={Boolean(list?.groups.length)} onCancel={toList} onLedger={props.onLedger}
-      onCreate={(body) => void run(() => api.post<Group>('/split', body), 'Group created. Invite people next.').then((g) => { if (g) { showGroup(g, 'people'); void requestWriteAccess() } })} />
+    return guide(<NewGroup busy={busy} toast={toast} hasGroups={Boolean(list?.groups.length)} onCancel={toList} onLedger={props.onLedger}
+      onCreate={(body) => void run(() => api.post<Group>('/split', body), 'Group created. Invite people next.').then((g) => { if (g) { showGroup(g, 'people'); void requestWriteAccess() } })} />)
   }
   if (view === 'expense' && group) {
-    return <ExpenseForm group={group} expense={editing} busy={busy} toast={toast}
+    return guide(<ExpenseForm group={group} expense={editing} busy={busy} toast={toast}
       onCancel={() => { setEditing(null); setView('group') }}
       onSave={(body) => void run(() => editing ? api.put<Group>(`/split/${group.id}/expenses/${editing.id}`, body) : api.post<Group>(`/split/${group.id}/expenses`, body),
         editing ? 'Expense updated.' : 'Expense added.').then((g) => { if (g) { setEditing(null); showGroup(g, 'ledger') } })}
-      onDelete={editing ? () => void run(() => api.del<Group>(`/split/${group.id}/expenses/${editing.id}`), editing.kind === 'settle' ? 'Payment removed.' : 'Expense deleted.').then((g) => { if (g) { setEditing(null); showGroup(g) } }) : undefined} />
+      onDelete={editing ? () => void run(() => api.del<Group>(`/split/${group.id}/expenses/${editing.id}`), editing.kind === 'settle' ? 'Payment removed.' : 'Expense deleted.').then((g) => { if (g) { setEditing(null); showGroup(g) } }) : undefined} />)
   }
   if (view === 'settle' && group && settle) {
-    return <SettleForm group={group} draft={settle} busy={busy} toast={toast} onCancel={() => setView('group')}
-      onSave={(body) => void run(() => api.post<Group>(`/split/${group.id}/settle`, body), 'Payment recorded.').then((g) => { if (g) { setSettle(null); showGroup(g, 'balances') } })} />
+    return guide(<SettleForm group={group} draft={settle} busy={busy} toast={toast} onCancel={() => setView('group')}
+      onSave={(body) => void run(() => api.post<Group>(`/split/${group.id}/settle`, body), 'Payment recorded.').then((g) => { if (g) { setSettle(null); showGroup(g, 'balances') } })} />)
   }
   if (view === 'group' && group) {
-    return <GroupScreen group={group} tab={tab} setTab={setTab} busy={busy} toast={toast} run={run} api={api} say={say}
+    return guide(<GroupScreen group={group} tab={tab} setTab={setTab} busy={busy} toast={toast} run={run} api={api} say={say}
       onGroup={(g) => showGroup(g)} onBack={toList}
       onAdd={() => { setEditing(null); setView('expense') }}
       onEdit={(e) => { setEditing(e); setView('expense') }}
-      onSettle={(d) => { setSettle(d); setView('settle') }} />
+      onSettle={(d) => { setSettle(d); setView('settle') }} />)
   }
   // list
   const groups = list?.groups ?? []
   const actions: Action[] = [{ label: 'New group', testId: 'split-new', onClick: () => setView('new') }]
   if (props.onLedger) actions.push({ label: 'Back to the 52-week ledger', tone: 'ghost', onClick: props.onLedger })
-  return (
+  return guide((
     <Shell theme="budget" title="Ledger Split" tabs={[]} active="list" home="list" onTab={() => undefined} ready screen="split-list"
       mast={['Ledger Split', `${groups.length} ${groups.length === 1 ? 'group' : 'groups'}`]} actions={actions} toast={toast} onBack={props.onLedger}>
       <div class="split-hero">
@@ -196,7 +210,7 @@ export function SplitApp(props: { onLedger?: () => void }) {
       </Section>
       <p class="note">In a group chat, add @{list?.bot ?? 'the bot'} and send /split: everyone gets the same ledger.</p>
     </Shell>
-  )
+  ))
 }
 
 /* ------------------------------------------------------------------ new group */

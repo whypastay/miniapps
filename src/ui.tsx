@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
 import type { ComponentChildren } from 'preact'
 import { applyFormatLocale, cls } from './format.ts'
+import { useGuideChrome } from './guide.tsx'
 import { themeBlock, themes, type ThemeId } from './theme.ts'
 import { bindBackButton, bootTelegram, closeOrLeave, haptic, nativeChromeVisible, telegramFullscreen, telegramProfile } from './telegram.ts'
 
@@ -100,9 +101,15 @@ export function Shell(props: {
   onBack?: () => void
   /** Short status line under the masthead (saving, errors). */
   toast?: string | null
+  /** Opens the help sheet. Falls back to GuideScope when present. */
+  onHelp?: () => void
+  banner?: ComponentChildren
   children: ComponentChildren
 }) {
   const theme = themes[props.theme]
+  const guide = useGuideChrome()
+  const onHelp = props.onHelp ?? guide.onHelp
+  const banner = props.banner ?? guide.banner
   const scrollRef = useRef<HTMLDivElement>(null)
   const [chrome, setChrome] = useState<Chrome>('browser')
   const [greeting, setGreeting] = useState<string | null>(null)
@@ -177,7 +184,11 @@ export function Shell(props: {
             <h1>{props.title}</h1>
             <div class="sub">{greeting ? greeting : 'mini app'}</div>
           </div>
-          {chrome === 'browser' && hasSettings ? (
+          {onHelp ? (
+            <button type="button" class="side right" aria-label="How it works" data-action="open-help" onClick={onHelp}>
+              <span class="help-btn">?</span>
+            </button>
+          ) : chrome === 'browser' && hasSettings ? (
             <button type="button" class="side right" aria-label="Open settings" onClick={() => choose('settings')}>
               <span class="ring"><Dots /></span>
             </button>
@@ -187,10 +198,27 @@ export function Shell(props: {
       {props.mast ? (
         <div class="mast" data-field="mast">
           <span>{props.mast[0]}</span>
-          <span>{props.mast[1]}</span>
+          <span class="mast-right">
+            <span>{props.mast[1]}</span>
+            {chrome === 'native' && onHelp ? (
+              <button type="button" class="help-btn mast-help" aria-label="How it works" data-action="open-help" onClick={onHelp}>?</button>
+            ) : null}
+          </span>
         </div>
-      ) : <div class="mast bare" aria-hidden="true" />}
+      ) : (
+        <div class={chrome === 'native' && onHelp ? 'mast' : 'mast bare'} aria-hidden={!(chrome === 'native' && onHelp)}>
+          {chrome === 'native' && onHelp ? (
+            <>
+              <span />
+              <span class="mast-right">
+                <button type="button" class="help-btn mast-help" aria-label="How it works" data-action="open-help" onClick={onHelp}>?</button>
+              </span>
+            </>
+          ) : null}
+        </div>
+      )}
       {props.toast ? <div class="toast" role="status" data-field="toast">{props.toast}</div> : null}
+      {banner ? banner : null}
       <div class="scroll" ref={scrollRef}>
         <div class="page">{props.children}</div>
       </div>

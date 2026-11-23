@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useState } from 'preact/hooks'
+import type { ComponentChildren } from 'preact'
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import { formatRemain, pad2 } from '../format.ts'
 import { Api, ApiError, copyText, openLink, requestWriteAccess, startParam } from '../api.ts'
 import { haptic } from '../telegram.ts'
+import { GuideScope, MATCHDAY_GUIDE } from '../guide.tsx'
 import { Empty, Pitch, Section, Shell } from '../ui.tsx'
 import { kickoffLabel } from './live.tsx'
 
@@ -11,7 +13,7 @@ interface Res { home: string; away: string; homeScore: number; awayScore: number
 interface Row { name: string; pts: number; exact: number; rank: number | null; you: boolean }
 interface League { id: number; name: string; code: string; members: number; owner: boolean; group: boolean; inviteLink: string; shareUrl: string }
 interface State {
-  me: { id: number; name: string; tz: string; zoneLabel: string; tzSet: boolean; remind: boolean; results: boolean; referrals: number; refLink: string; shareUrl: string }
+  me: { id: number; name: string; tz: string; zoneLabel: string; tzSet: boolean; remind: boolean; results: boolean; referrals: number; refLink: string; shareUrl: string; onboarded?: boolean }
   scoring: { result: number; exact: number }
   remindHours: number
   global: { rank: number | null; players: number; pts: number; exact: number }
@@ -115,20 +117,30 @@ export function ServerMatchday(props: { api: Api; onOffline?: () => void }) {
     return () => { cancel = true; window.clearInterval(timer) }
   }, [])
 
+  const invited = useRef(launchJoin())
+  const hint = invited.current
+    ? 'You were invited to a league. Join below — the short guide is under ? if you want it later.'
+    : null
+  const guide = (node: ComponentChildren, ready = true) => (
+    <GuideScope theme="matchday" spec={MATCHDAY_GUIDE} api={api} ready={ready && Boolean(st || fatal)} onboarded={Boolean(st?.me.onboarded)} hint={hint}>
+      {node}
+    </GuideScope>
+  )
+
   if (fatal) {
-    return (
+    return guide((
       <Shell theme="matchday" title="Matchday" tabs={[]} active="x" home="x" onTab={() => undefined} ready screen="error" mast={['Matchday', 'Offline']}
         actions={[{ label: 'Try again', testId: 'retry', onClick: () => location.reload() }]}>
         <Section title="The bot did not answer"><p class="note">{fatal}</p></Section>
       </Shell>
-    )
+    ))
   }
   if (!st) {
-    return (
+    return guide((
       <Shell theme="matchday" title="Matchday" tabs={TABS} active={tab} home="table" onTab={setTab} ready={false} screen="loading" mast={['Matchday', 'Reading']}>
         <p class="loading">Reading the league</p>
       </Shell>
-    )
+    ), false)
   }
 
   const s = st
@@ -235,7 +247,7 @@ export function ServerMatchday(props: { api: Api; onOffline?: () => void }) {
   const myPts = isLeague ? (s.table.rows.find((r) => r.you)?.pts ?? 0) : s.global.pts
   const myExact = isLeague ? (s.table.rows.find((r) => r.you)?.exact ?? 0) : s.global.exact
 
-  return (
+  return guide((
     <Shell theme="matchday" title="Matchday" tabs={TABS} active={tab} home="table" onTab={(t) => { setConfirm(null); setTab(t) }} actions={actions} ready screen={`live-${tab}`} mast={mast} toast={toast}
       onBack={form ? () => setForm(null) : undefined}>
       {askRemind && !s.me.remind ? (
@@ -307,7 +319,7 @@ export function ServerMatchday(props: { api: Api; onOffline?: () => void }) {
       {tab === 'picks' ? (
         <Section title="Open fixtures" aside={`${s.round ? s.round + ' · ' : ''}${open.length - todo.length}/${open.length} in`}>
           <p class="note">Correct result {s.scoring.result} pt. Exact score {s.scoring.exact} pts. Times in {s.me.zoneLabel}. Each pick locks at kick-off.</p>
-          {fixtures.length === 0 ? <Empty title="No fixtures yet" body="The schedule refreshes automatically." /> : null}
+          {fixtures.length === 0 ? <Empty title="No fixtures yet" body="When a match is listed, set the score here before kick-off. The schedule refreshes automatically." /> : null}
           {fixtures.map((f, index) => {
             const locked = f.ms <= now
             const v = value(f)
@@ -371,6 +383,7 @@ export function ServerMatchday(props: { api: Api; onOffline?: () => void }) {
             </Section>
           ) : null}
           <Section title="Your leagues" aside={`${s.leagues.length}`}>
+            {!form && !s.leagues.length ? <Empty title="No private league yet" body="Create one for friends, or join with a code. The worldwide table is already open." /> : null}
             {s.leagues.map((l, index) => (
               <button type="button" class={l.id === s.table.id ? 'row is-you' : 'row'} key={l.id} onClick={() => void switchLeague(l.id)}>
                 <span class="row-idx">{pad2(index + 1)}</span>
@@ -425,5 +438,5 @@ export function ServerMatchday(props: { api: Api; onOffline?: () => void }) {
         </>
       ) : null}
     </Shell>
-  )
+  ))
 }

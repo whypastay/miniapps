@@ -14,7 +14,7 @@ export interface Prefs {
   country: string | null; countryName: string | null; roles: string[]; levels: string[]
   alert: { on: boolean; hour: number; tz: string | null }
 }
-export interface Me { prefs: Prefs; meta: Meta; savedCount: number; start: { job: string | null; check: string | null } }
+export interface Me { prefs: Prefs; meta: Meta; savedCount: number; start: { job: string | null; check: string | null }; onboarded?: boolean }
 
 export interface Job {
   token: string; id?: string; title: string; company: string; pay: string; type?: string; level?: string

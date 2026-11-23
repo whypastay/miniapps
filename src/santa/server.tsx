@@ -1,8 +1,10 @@
+import type { ComponentChildren } from 'preact'
 import { useCallback, useEffect, useState } from 'preact/hooks'
 import { daysBetween, formatShort, pad2, parseISODate } from '../format.ts'
 import { Api, ApiError, copyText, openLink, requestWriteAccess, startParam } from '../api.ts'
 import { bindMainButton, haptic } from '../telegram.ts'
 import { themes } from '../theme.ts'
+import { GuideScope, SANTA_GUIDE } from '../guide.tsx'
 import { Empty, Seal, Section, Shell } from '../ui.tsx'
 import { NameLines, wishLines } from './live.tsx'
 import { BudgetField, guessCurrency, MeetupSection, PartyDeck, PublicWishlistBody, textToItems, WishItemsEditor, WishItemsView } from './plus.tsx'
@@ -46,7 +48,7 @@ interface GameView extends GameSummary {
   message?: string
   delivered?: boolean
 }
-interface Me { id: number; name: string; news: boolean; bot: string; mainApp: boolean; games: GameSummary[] }
+interface Me { id: number; name: string; news: boolean; bot: string; mainApp: boolean; games: GameSummary[]; onboarded?: boolean }
 
 const GAME_TABS = [
   { id: 'game', label: 'Game', icon: 'gift' as const },
@@ -186,40 +188,51 @@ export function ServerSanta(props: { api: Api; onOffline?: () => void }) {
     void refreshMe().catch(() => undefined)
   }, [refreshMe])
 
+  const hint = pendingJoin
+    ? 'You were invited to a Secret Santa. Join below — the short guide is under ? if you want it later.'
+    : publicList
+      ? 'This is a public wishlist. Start your own from the button below, or open ? for a short guide.'
+      : null
+  const guide = (node: ComponentChildren, ready = true) => (
+    <GuideScope theme="santa" spec={SANTA_GUIDE} api={api} ready={ready && Boolean(me || publicList || fatal)} onboarded={Boolean(me?.onboarded)} hint={hint}>
+      {node}
+    </GuideScope>
+  )
+
   if (fatal) {
-    return (
+    return guide((
       <Shell theme="santa" title="Secret Santa" tabs={[]} active="x" home="x" onTab={() => undefined} ready screen="error" mast={['Secret Santa', 'Offline']}
         actions={[{ label: 'Try again', testId: 'retry', onClick: () => location.reload() }]}>
         <Section title="The bot did not answer"><p class="note">{fatal}</p></Section>
       </Shell>
-    )
+    ))
   }
   if (!me) {
-    return (
+    return guide((
       <Shell theme="santa" title="Secret Santa" tabs={[]} active="x" home="x" onTab={() => undefined} ready={false} screen="loading" mast={['Secret Santa', 'Reading']}>
         <p class="loading">Reading your games</p>
       </Shell>
-    )
+    ), false)
   }
   if (publicList) {
-    return (
+    return guide((
       <Shell theme="santa" title="Secret Santa" tabs={[]} active="x" home="x" onTab={() => undefined} ready screen="public-wishlist"
         mast={['Wishlist', publicList.name]} toast={toast}
         actions={[{ label: me.games.length ? 'Open my games' : 'Start your own Secret Santa', testId: 'public-cta', onClick: () => setPublicList(null) }]}>
         <PublicWishlistBody list={publicList} />
         <p class="note">{publicList.mine ? 'This is your list. Anyone with the link can see it.' : 'Shared from Secret Santa · Party Pack. Organise your own gift exchange in a minute.'}</p>
       </Shell>
-    )
+    ))
   }
   if (!game) {
-    return <Games me={me} api={api} run={run} busy={busy} toast={toast} pendingJoin={pendingJoin}
+    return guide(<Games me={me} api={api} run={run} busy={busy} toast={toast} pendingJoin={pendingJoin}
       onJoined={(view) => { setPendingJoin(null); setGame(view); setTab(view.playing ? 'wishlist' : 'game'); void requestWriteAccess() }}
       onCreated={(view) => { setGame(view); setTab('group'); void requestWriteAccess() }}
       onOpen={(id) => void openGame(id)}
-      onMe={setMe} />
+      onMe={setMe} />)
   }
-  return <GameScreen game={game} me={me} api={api} run={run} busy={busy} toast={toast} tab={tab} setTab={setTab}
-    onGame={setGame} onBack={back} say={say} />
+  return guide(<GameScreen game={game} me={me} api={api} run={run} busy={busy} toast={toast} tab={tab} setTab={setTab}
+    onGame={setGame} onBack={back} say={say} />)
 }
 
 type Runner = <T>(fn: () => Promise<T>, ok?: string) => Promise<T | null>
