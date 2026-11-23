@@ -1291,3 +1291,23 @@ select { font: inherit; font-family: var(--mono); font-size: 15px; color: var(--
 }
 
 .app[data-layout="frame"] { position: relative; }
+
+/* ===== RemoteRadar · AI gigs mode ===== */
+.gig-tag { display: inline-block; margin-top: 5px; font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; }
+.gig-tag.tone-up { color: var(--up); }
+.gig-tag.tone-gold { color: var(--gold); }
+.gig-tag.tone-down { color: var(--down); }
+.gig-tag.tone-mute { color: var(--mute); }
+.gig-row[data-status="closed"] .row-title { color: var(--mute); }
+.gig-row .radar-src { max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+.gig-watch { margin-top: 6px; }
+.gig-op { margin: 6px 0 0; }
+.gig-status { margin: 0 0 6px; padding: 10px 12px; border-left: 2px solid var(--rule-strong); background: color-mix(in srgb, var(--paper) 70%, white); }
+.gig-status.tone-up { border-left-color: var(--up); }
+.gig-status.tone-gold { border-left-color: var(--gold); }
+.gig-status.tone-down { border-left-color: var(--down); }
+.gig-status p, .app[data-theme="radar"] .gig-status p { margin: 4px 0 0; font-size: 14px; line-height: 1.5; color: var(--ink); }
+.gig-steps { counter-reset: step; }
+.gig-steps li { counter-increment: step; padding-left: 26px; }
+.gig-steps li::before { content: counter(step, decimal-leading-zero); width: auto; height: auto; background: none; top: 8px; left: 0; font-family: var(--mono); font-size: 10px; color: var(--gold); }
+.app[data-theme="radar"] .tabbar .tab-label, .app[data-theme="radar"] .tabbar span { white-space: nowrap; }

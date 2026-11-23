@@ -179,6 +179,45 @@ export const RADAR_GUIDE: GuideSpec = {
   ],
 }
 
+export const GIGS_GUIDE: GuideSpec = {
+  id: 'radar',
+  cards: [
+    {
+      kicker: '01',
+      title: 'AI gigs open to your country',
+      body: 'Outlier, Mercor, micro1, DataAnnotation and more. See which ones take people from where you live, before you spend an evening on sign-up.',
+    },
+    {
+      kicker: '02',
+      title: 'What joining really takes',
+      body: 'ID checks, assessments, typical tasks, how pay works and what people run into. Checked by hand on each platform\'s own pages, every week.',
+    },
+    {
+      kicker: '03',
+      title: 'Spot fake copies',
+      body: 'Real platforms never charge to join. Each card shows the official site only. Paste any offer or link in Check to see its red flags.',
+    },
+    {
+      kicker: '04',
+      title: 'Hear when one opens',
+      body: 'Turn on a notice and we message you when a new platform appears or one opens to your country. Skip this anytime — the ? keeps the guide.',
+    },
+  ],
+  how: [
+    'Gigs lists AI-training and data platforms with your status: open, varies by project, invite only, or not open.',
+    'Tap a platform for its country rules, sign-up steps, tasks, pay and common complaints, with links to its own pages.',
+    'Sign up only on the official site shown on the card. Joining is free on every real platform.',
+    'Never buy, rent or share an account, and never use a VPN to fake your country: platforms close those accounts and keep the pay.',
+    'Turn on the notice to hear when a platform opens to your country. Live gig listings below come from Himalayas, Remote OK and Jobicy.',
+  ],
+  faq: [
+    { q: 'How current is this?', a: 'We read each platform\'s public pages by hand and review the list every week. Rules change fast, so the official site has the final word.' },
+    { q: 'Are you part of these platforms?', a: 'No. RemoteRadar is independent. If we ever use a referral link it is the platform\'s official program and it is marked.' },
+    { q: 'Someone offers me a ready account. OK?', a: 'No. Accounts are tied to one verified person. Rented or bought accounts get closed, the pay is lost, and sellers often ask for more money.' },
+    { q: 'What does the notice send?', a: 'At most one message a day, between 9:00 and 21:00 your time, only when a platform is new or opens to your country. Turn it off here or with /stop.' },
+  ],
+}
+
 interface Chrome {
   onHelp?: () => void
   banner?: ComponentChildren
@@ -203,6 +242,8 @@ export function GuideScope(props: {
   ready: boolean
   onboarded: boolean
   hint?: string | null
+  /** Body posted to /me/onboarded when the intro ends; lets one app keep a separate intro per mode. */
+  doneBody?: Record<string, unknown>
   children: ComponentChildren
 }) {
   const forced = override()
@@ -227,7 +268,7 @@ export function GuideScope(props: {
     setIntro(false)
     haptic('success')
     if (props.api) {
-      try { await props.api.post('/me/onboarded', { done: true }) } catch { /* keep the local flag */ }
+      try { await props.api.post('/me/onboarded', props.doneBody ?? { done: true }) } catch { /* keep the local flag */ }
     }
   }
 

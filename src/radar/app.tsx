@@ -4,17 +4,18 @@ import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import { Api, ApiError, connect, discoverBase, openLink, requestWriteAccess, startParam } from '../api.ts'
 import { cls, pad2 } from '../format.ts'
 import { haptic, inTelegram } from '../telegram.ts'
-import { GuideScope, RADAR_GUIDE } from '../guide.tsx'
+import { GIGS_GUIDE, GuideScope, RADAR_GUIDE } from '../guide.tsx'
 import { Empty, RadarSweep, Section, Shell, Stats, type Action } from '../ui.tsx'
 import {
   day, LEVEL_LABEL, localTz, openExternal, radarTarget,
-  type CheckResponse, type CheckResult, type FeedPage, type Job, type Me, type Meta, type Prefs, type PublicCheck,
+  type CheckResponse, type CheckResult, type FeedPage, type GigCard, type GigDetail, type GigsPage, type Job, type Me, type Meta, type Prefs, type PublicCheck,
 } from './model.ts'
 
 const T = 'radar' as const
 const TITLE = 'RemoteRadar'
 const TABS = [
   { id: 'feed', label: 'Feed', icon: 'radar' as const },
+  { id: 'gigs', label: 'AI gigs', icon: 'spark' as const },
   { id: 'saved', label: 'Saved', icon: 'bookmark' as const },
   { id: 'check', label: 'Check', icon: 'shield' as const },
   { id: 'settings', label: 'Settings', icon: 'gear' as const },
@@ -26,7 +27,7 @@ function payText(pay: string | undefined): string {
   return /^(not listed|not stated|n\/a)?$/i.test(p) ? '' : p
 }
 
-type View = 'loading' | 'fatal' | 'setup' | 'tabs' | 'job' | 'result' | 'shared-check'
+type View = 'loading' | 'fatal' | 'setup' | 'tabs' | 'job' | 'gig' | 'result' | 'shared-check'
 type Runner = <R>(fn: () => Promise<R>, ok?: string) => Promise<R | null>
 
 function useToast() {
@@ -49,6 +50,9 @@ export function RadarApp() {
   const [jobBack, setJobBack] = useState<string>('feed')
   const [check, setCheck] = useState<CheckResponse | null>(null)
   const [shared, setShared] = useState<PublicCheck | null>(null)
+  const [gigs, setGigs] = useState<GigsPage | null>(null)
+  const [gig, setGig] = useState<GigDetail | null>(null)
+  const [setupFor, setSetupFor] = useState<'feed' | 'gigs'>('feed')
   const [draft, setDraft] = useState('')
   const [q, setQ] = useState('')
   const [busy, setBusy] = useState(false)
@@ -111,6 +115,13 @@ export function RadarApp() {
           if (d) { setJob(d.job); setJobBack(m.prefs.country ? 'feed' : 'setup'); setView('job'); if (m.prefs.country) void loadFeed(client).catch(() => undefined); return }
           say('That job is no longer in our feed.')
         }
+        if (target.gig) {
+          const d = await client.get<{ platform: GigDetail }>(`/gigs/${encodeURIComponent(target.gig)}`).catch(() => null)
+          if (cancel) return
+          if (d) { setGig(d.platform); setSetupFor('gigs'); setView('gig'); return }
+          say('We don\'t track that platform.')
+        }
+        if (target.tab === 'gigs') setSetupFor('gigs')
         if (!m.prefs.country) { setView('setup'); return }
         if (target.tab) setTab(target.tab)
         await loadFeed(client)
@@ -122,6 +133,14 @@ export function RadarApp() {
     })()
     return () => { cancel = true }
   }, [loadFeed, say])
+
+  const loadGigs = useCallback(async (client: Api) => {
+    setGigs(await client.get<GigsPage>('/gigs'))
+  }, [])
+
+  useEffect(() => {
+    if (api && view === 'tabs' && tab === 'gigs') void loadGigs(api).catch(() => undefined)
+  }, [api, view, tab, me?.prefs.country, loadGigs])
 
   useEffect(() => {
     if (api && view === 'tabs' && tab === 'saved') void api.get<{ jobs: Job[] }>('/saved').then((r) => setSaved(r.jobs)).catch(() => undefined)
@@ -145,14 +164,42 @@ export function RadarApp() {
     })
   }, [api, run])
 
+  const openGig = useCallback((g: GigCard) => {
+    if (!api) return
+    haptic('tap')
+    void run(() => api.get<{ platform: GigDetail }>(`/gigs/${g.id}`)).then((d) => {
+      if (d) { setGig(d.platform); setView('gig') }
+    })
+  }, [api, run])
+
+  const setGigWatch = useCallback((on: boolean) => {
+    if (!api || !me) return
+    if (on) void requestWriteAccess()
+    void run(() => api.put<{ watch: boolean }>('/gigs/watch', { on }), on ? 'We\'ll tell you when a platform opens to you.' : 'Gig notices off.').then((r) => {
+      if (!r) return
+      setMe({ ...me, gigWatch: r.watch })
+      if (gigs) setGigs({ ...gigs, watch: r.watch })
+    })
+  }, [api, me, gigs, run])
+
   const launched = useRef(radarTarget(startParam()))
   const hint = launched.current.job
     ? 'Someone shared a job with you. Open it below — the short guide is under ? if you want it later.'
     : launched.current.check
       ? 'Someone shared a scam check with you. Read it below — the short guide is under ? if you want it later.'
-      : null
-  const guide = (node: ComponentChildren) => (
-    <GuideScope theme="radar" spec={RADAR_GUIDE} api={api} ready={view !== 'loading'} onboarded={Boolean(me?.onboarded)} hint={hint}>
+      : launched.current.gig
+        ? 'Someone shared an AI gig platform with you. Read it below — the short guide is under ? if you want it later.'
+        : null
+  // AI gigs is its own mode: its own intro cards and help, remembered separately (gigsOnboarded).
+  const ready = view !== 'loading'
+  const gigsMode = view === 'gig' || (view === 'tabs' && tab === 'gigs') || (view === 'setup' && setupFor === 'gigs')
+  const guide = (node: ComponentChildren) => gigsMode ? (
+    <GuideScope key="gigs" theme="radar" spec={GIGS_GUIDE} api={api} ready={ready} onboarded={Boolean(me?.gigsOnboarded)}
+      hint={hint} doneBody={{ done: true, mode: 'gigs' }}>
+      {node}
+    </GuideScope>
+  ) : (
+    <GuideScope key="radar" theme="radar" spec={RADAR_GUIDE} api={api} ready={ready} onboarded={Boolean(me?.onboarded)} hint={hint}>
       {node}
     </GuideScope>
   )
@@ -184,8 +231,12 @@ export function RadarApp() {
   if (!api || !me) return guide(null)
 
   if (view === 'setup') {
-    return guide(<SetupScreen meta={me.meta} prefs={me.prefs} busy={busy} toast={toast} onBack={job ? () => setView('job') : undefined}
-      onSave={(p) => void savePrefs(p).then((out) => { if (out) { setView('tabs'); setTab(tab === 'check' ? 'check' : 'feed'); haptic('success') } })} />)
+    return guide(<SetupScreen meta={me.meta} prefs={me.prefs} busy={busy} toast={toast} mode={setupFor}
+      onBack={job ? () => setView('job') : gig ? () => setView('gig') : undefined}
+      onSave={(p) => void savePrefs(p).then((out) => {
+        if (!out) return
+        setView('tabs'); setTab(setupFor === 'gigs' ? 'gigs' : tab === 'check' ? 'check' : 'feed'); haptic('success')
+      })} />)
   }
   if (view === 'job' && job) {
     return guide(<JobScreen job={job} me={me} busy={busy} toast={toast}
@@ -198,6 +249,13 @@ export function RadarApp() {
         if (feed) setFeed({ ...feed, jobs: feed.jobs.map((x) => x.token === job.token ? { ...x, saved: r.saved } : x) })
       })}
       onShare={() => void run(() => api.post<{ shareUrl: string }>(`/jobs/${job.token}/share`)).then((r) => { if (r) openLink(r.shareUrl) })} />)
+  }
+  if (view === 'gig' && gig) {
+    return guide(<GigScreen gig={gig} me={me} busy={busy} toast={toast}
+      onBack={() => { if (me.prefs.country) { setTab('gigs'); setView('tabs') } else { setSetupFor('gigs'); setView('setup') } }}
+      onGet={() => { setSetupFor('gigs'); setView('setup') }}
+      onCheck={() => { setTab('check'); setView(me.prefs.country ? 'tabs' : 'setup') }}
+      onShare={() => void run(() => api.post<{ shareUrl: string }>(`/gigs/${gig.id}/share`)).then((r) => { if (r) openLink(r.shareUrl) })} />)
   }
   if (view === 'result' && check) {
     return guide(<ResultScreen res={check} toast={toast}
@@ -219,6 +277,11 @@ export function RadarApp() {
       onMore={() => feed && void run(() => loadFeed(api, q, feed))}
       onOpen={(j) => openJob(j, 'feed')}
       onFilters={() => setTab('settings')} />
+  } else if (tab === 'gigs') {
+    mast = ['AI gigs', gigs ? `Checked ${day(gigs.reviewed)}` : '']
+    body = <GigsTab page={gigs} prefs={prefs} busy={busy} watch={Boolean(me.gigWatch)}
+      onOpen={openGig} onJob={(j) => openJob(j, 'gigs')} onWatch={setGigWatch}
+      onCheck={() => setTab('check')} onCountry={() => setTab('settings')} />
   } else if (tab === 'saved') {
     mast = ['Saved jobs', `${me.savedCount}`]
     body = <SavedTab jobs={saved} onOpen={(j) => openJob(j, 'saved')} onFeed={() => setTab('feed')} />
@@ -230,7 +293,7 @@ export function RadarApp() {
   } else {
     mast = ['Settings', prefs.countryName ?? '']
     body = <SettingsTab me={me} busy={busy} onSave={(p, ok) => void savePrefs(p, ok)}
-      onDelete={() => void run(() => api.del('/me'), 'Your data is deleted.').then((r) => { if (r) { setMe({ ...me, prefs: { ...me.prefs, country: null, countryName: null, roles: [], levels: [], alert: { on: false, hour: 9, tz: null } }, savedCount: 0 }); setView('setup') } })} />
+      onDelete={() => void run(() => api.del('/me'), 'Your data is deleted.').then((r) => { if (r) { setMe({ ...me, prefs: { ...me.prefs, country: null, countryName: null, roles: [], levels: [], alert: { on: false, hour: 9, tz: null } }, savedCount: 0, gigWatch: false }); setGigs(null); setView('setup') } })} />
   }
   return guide((
     <Shell theme={T} title={TITLE} tabs={TABS} active={tab} home="feed" onTab={setTab} ready screen={`radar-${tab}`} mast={mast} actions={actions} toast={toast}>
@@ -284,19 +347,29 @@ function PrefsPicker(props: { meta: Meta; country: string | null; roles: string[
   )
 }
 
-function SetupScreen(props: { meta: Meta; prefs: Prefs; busy: boolean; toast: string | null; onSave: (p: Partial<Prefs>) => void; onBack?: () => void }) {
+function SetupScreen(props: { meta: Meta; prefs: Prefs; busy: boolean; toast: string | null; mode?: 'feed' | 'gigs'; onSave: (p: Partial<Prefs>) => void; onBack?: () => void }) {
+  const gigsMode = props.mode === 'gigs'
   const [country, setCountry] = useState<string | null>(props.prefs.country)
   const [roles, setRoles] = useState<string[]>(props.prefs.roles)
   const [levels, setLevels] = useState<string[]>(props.prefs.levels)
   return (
     <Shell theme={T} title={TITLE} tabs={[]} active="setup" home="setup" onTab={() => undefined} ready screen="radar-setup" mast={['RemoteRadar', 'Set up']} toast={props.toast} onBack={props.onBack}
-      actions={[{ label: 'Show my jobs', testId: 'save-setup', disabled: !country || props.busy, onClick: () => props.onSave({ country, roles, levels, alert: { on: props.prefs.alert.on, hour: props.prefs.alert.hour, tz: localTz() } } as Partial<Prefs>) }]}>
-      <div class="hero radar-hero">
-        <RadarSweep />
-        <div class="kicker">Remote jobs, filtered for you</div>
-        <h2 class="radar-lede">Only listings that are open to your country.</h2>
-        <p class="note">We read Himalayas, Remote OK and Jobicy and drop anything limited to the US, the UK or Europe unless that is where you are.</p>
-      </div>
+      actions={[{ label: gigsMode ? 'Show my AI gigs' : 'Show my jobs', testId: 'save-setup', disabled: !country || props.busy, onClick: () => props.onSave({ country, roles, levels, alert: { on: props.prefs.alert.on, hour: props.prefs.alert.hour, tz: localTz() } } as Partial<Prefs>) }]}>
+      {gigsMode ? (
+        <div class="hero radar-hero">
+          <RadarSweep />
+          <div class="kicker">AI gigs, filtered for you</div>
+          <h2 class="radar-lede">Which AI-training platforms take your country.</h2>
+          <p class="note">Pick where you live. Roles and level only shape the job feed; you can skip them.</p>
+        </div>
+      ) : (
+        <div class="hero radar-hero">
+          <RadarSweep />
+          <div class="kicker">Remote jobs, filtered for you</div>
+          <h2 class="radar-lede">Only listings that are open to your country.</h2>
+          <p class="note">We read Himalayas, Remote OK and Jobicy and drop anything limited to the US, the UK or Europe unless that is where you are.</p>
+        </div>
+      )}
       <PrefsPicker meta={props.meta} country={country} roles={roles} levels={levels} setCountry={setCountry} setRoles={setRoles} setLevels={setLevels} />
     </Shell>
   )
@@ -415,7 +488,7 @@ function CheckTab(props: { draft: string; setDraft: (v: string) => void; meta: M
         <textarea data-field="check-text" rows={7} maxLength={8000} placeholder="Paste the job post, the recruiter's message, or a link"
           value={props.draft} onInput={(e) => props.setDraft((e.target as HTMLTextAreaElement).value)} />
       </div>
-      <Section title="Try an example" aside="Not real companies">
+      <Section title="Try an example" aside="Composites">
         {props.meta.examples.map((ex) => (
           <button type="button" class="row radar-example" key={ex.id} data-example={ex.id} onClick={() => { haptic('select'); props.setDraft(ex.text) }}>
             <span class="row-idx">{ex.id === 'clean' ? 'OK' : '!'}</span>
@@ -424,7 +497,7 @@ function CheckTab(props: { draft: string; setDraft: (v: string) => void; meta: M
           </button>
         ))}
       </Section>
-      <p class="note">Plain rules, no AI: fees, chat-app-only recruiters, task and crypto schemes, requests for codes or ID, look-alike links. We keep only the result, never your text. Examples are composites of common scams, not real companies.</p>
+      <p class="note">Plain rules, no AI: fees, chat-app-only recruiters, task and crypto schemes, requests for codes or ID, look-alike links, fake copies of AI-training platforms, account rental. We keep only the result, never your text. Examples are composites of common scams; a named platform in one is being impersonated, it is not the scam.</p>
     </>
   )
 }
@@ -540,12 +613,127 @@ function SettingsTab(props: { me: Me; busy: boolean; onSave: (p: Partial<Prefs>,
         </button>
       </Section>
       <Section title="Your data">
-        <p class="note">We keep your country, roles, level, saved jobs and alert time. Scam checks keep only the result.</p>
+        <p class="note">We keep your country, roles, level, saved jobs, alert time and whether AI gig notices are on. Scam checks keep only the result.</p>
         {confirm
           ? <button type="button" class="text-btn danger" data-action="delete-confirm" onClick={props.onDelete}>Tap again to delete everything</button>
           : <button type="button" class="text-btn danger" data-action="delete" onClick={() => setConfirm(true)}>Delete my data</button>}
       </Section>
       {inTelegram() ? null : <p class="note">Open from Telegram to receive alerts.</p>}
     </>
+  )
+}
+
+/* ------------------------------------------------------------ AI gigs */
+const GIG_TONE: Record<string, string> = { open: 'up', varies: 'gold', invite: 'mute', closed: 'down' }
+
+function GigStatusTag(props: { status: string; label: string }) {
+  return <span class={cls('gig-tag', `tone-${GIG_TONE[props.status] ?? 'mute'}`)} data-status={props.status}>{props.label}</span>
+}
+
+function WatchToggle(props: { on: boolean; busy: boolean; country: string | null; onChange: (on: boolean) => void }) {
+  return (
+    <div class="field gig-watch">
+      <span><span class="k">Tell me when one opens</span><span class="row-sub">A new platform, or one opening to {props.country ?? 'your country'}. At most one message a day.</span></span>
+      <div class="choices radar-toggle" data-field="gig-watch">
+        <button type="button" class="choice" aria-pressed={!props.on} data-value="off" disabled={props.busy} onClick={() => props.onChange(false)}>Off</button>
+        <button type="button" class="choice" aria-pressed={props.on} data-value="on" disabled={props.busy} onClick={() => props.onChange(true)}>On</button>
+      </div>
+    </div>
+  )
+}
+
+function SafetyList() {
+  return (
+    <ul class="radar-list">
+      <li>Joining a real platform is free. A fee to "unlock tasks", pass an assessment or buy a starter kit means a scam.</li>
+      <li>Sign up only on the official site. Fake copies of Outlier, DataAnnotation and others collect fees and ID scans.</li>
+      <li>Never buy, rent or share an account. "Taskers available" offers break platform rules; the account is closed and the pay lost.</li>
+      <li>Don't use a VPN to fake your country. Platforms close those accounts.</li>
+    </ul>
+  )
+}
+
+function GigsTab(props: {
+  page: GigsPage | null; prefs: Prefs; busy: boolean; watch: boolean
+  onOpen: (g: GigCard) => void; onJob: (j: Job) => void; onWatch: (on: boolean) => void; onCheck: () => void; onCountry: () => void
+}) {
+  const g = props.page
+  if (!g) return <p class="loading">Loading AI gig platforms</p>
+  const open = g.counts.open ?? 0
+  return (
+    <>
+      <div class="hero radar-hero">
+        <RadarSweep />
+        <div class="kicker">AI gigs · {g.countryName ?? 'your country'}</div>
+        <div class="hero-num" data-field="gigs-open">{open}</div>
+        <div class="of"><span>{open === 1 ? 'platform' : 'platforms'} open to you · {g.counts.varies ?? 0} vary by project</span>
+          <button type="button" class="text-btn" data-action="gig-country" onClick={props.onCountry}>{g.countryName ?? 'Set country'}</button></div>
+      </div>
+      <WatchToggle on={props.watch} busy={props.busy} country={g.countryName} onChange={props.onWatch} />
+      <Section title="Platforms" aside={`${g.platforms.length}`}>
+        {g.platforms.map((p, i) => (
+          <button type="button" class="row radar-row gig-row" key={p.id} data-gig={p.id} data-status={p.status} onClick={() => props.onOpen(p)}>
+            <span class="row-idx">{pad2(i + 1)}</span>
+            <span>
+              <span class="row-title">{p.name}</span>
+              <span class="row-sub">{p.kind}</span>
+              <GigStatusTag status={p.status} label={p.statusLabel} />
+            </span>
+            <span class="row-val radar-src">{p.official[0]}</span>
+          </button>
+        ))}
+      </Section>
+      <Section title="Live gig listings" aside={g.listings.length ? `${g.listings.length}` : undefined}>
+        {g.listings.length ? g.listings.map((j, i) => <JobRow key={j.token} job={j} i={i} onOpen={() => props.onJob(j)} />)
+          : <Empty title="No AI gig listings open to you today" body="Annotation, rating and transcription roles from Himalayas, Remote OK and Jobicy show up here when a board lists one." />}
+      </Section>
+      <Section title="Stay safe">
+        <SafetyList />
+        <button type="button" class="text-btn radar-more" data-action="gig-check" onClick={props.onCheck}>Check a message or link</button>
+      </Section>
+      <button type="button" class="row" data-action="gigs-hub" onClick={() => openLink(g.hub)}>
+        <span class="row-idx">↗</span><span><span class="row-title">@remotelyhiredgigs</span><span class="row-sub">AI and data gigs, picked daily</span></span><span class="row-val">Channel</span>
+      </button>
+      <p class="note" data-field="gigs-note">Compiled by hand from each platform's own public pages, reviewed every {g.reviewEveryDays} days (last {day(g.reviewed)}). Rules change fast; the official site has the final word. RemoteRadar is independent and not affiliated with any platform.</p>
+    </>
+  )
+}
+
+function GigScreen(props: { gig: GigDetail; me: Me; busy: boolean; toast: string | null; onBack: () => void; onGet: () => void; onShare: () => void; onCheck: () => void }) {
+  const g = props.gig
+  const setUp = Boolean(props.me.prefs.country)
+  const actions: Action[] = [{ label: `Open ${g.official[0]}`, testId: 'open-official', onClick: () => openExternal(g.url) }]
+  if (setUp) actions.push({ label: 'Share with a friend', tone: 'ghost', testId: 'share-gig', disabled: props.busy, onClick: props.onShare })
+  else actions.push({ label: 'Get RemoteRadar', tone: 'ghost', testId: 'get-radar', onClick: props.onGet })
+  return (
+    <Shell theme={T} title={TITLE} tabs={[]} active="gig" home="gig" onTab={() => undefined} onBack={props.onBack} ready screen="radar-gig"
+      mast={['AI gig platform', setUp ? g.statusLabel : 'Shared']} actions={actions} toast={props.toast}>
+      <div class="radar-job-head">
+        <div class="kicker">{setUp ? `${g.statusLabel} · ${props.me.prefs.countryName}` : 'Pick your country to see your status'}</div>
+        <h2 class="radar-title" data-field="gig-name">{g.name}</h2>
+        <p class="row-sub gig-op">{g.operator} · {g.kind}</p>
+      </div>
+      <div class={cls('gig-status', `tone-${GIG_TONE[g.status] ?? 'mute'}`)} data-field="gig-status" data-status={g.status}>
+        {setUp ? <GigStatusTag status={g.status} label={g.statusLabel} /> : null}
+        <p>{g.countryNote}</p>
+      </div>
+      <Section title="Typical tasks"><p class="radar-about">{g.tasks}</p></Section>
+      <Section title="To join" aside={`${g.onboarding.length} steps`}>
+        <ol class="radar-list gig-steps">{g.onboarding.map((s) => <li key={s}>{s}</li>)}</ol>
+      </Section>
+      <Section title="Pay"><p class="radar-about">{g.pay}</p></Section>
+      <Section title="What people run into">
+        <ul class="radar-list">{g.watch.map((s) => <li key={s}>{s}</li>)}</ul>
+      </Section>
+      <Section title="Official site only">
+        <p class="radar-about" data-field="gig-official">Sign up only at <strong>{g.official.join(' or ')}</strong>. Joining is free; anyone asking you to pay, rent an account or use a VPN is not {g.name}.</p>
+        <button type="button" class="text-btn radar-more" data-action="gig-check" onClick={props.onCheck}>Check a link or message</button>
+      </Section>
+      <p class="radar-credit" data-field="gig-sources">
+        Sources: {g.sources.map((s, i) => (
+          <span key={s.url}>{i ? ' · ' : ''}<a href={s.url} onClick={(e) => { e.preventDefault(); openExternal(s.url) }}>{s.label}</a></span>
+        ))}. Checked {day(g.reviewed)}. Not affiliated with {g.name}.
+      </p>
+    </Shell>
   )
 }

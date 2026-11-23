@@ -63,7 +63,7 @@ async function open(who, { start, query = '', telegram = true } = {}) {
       } }
     }, sign(user, start), user, start ?? '')
   }
-  await page.goto(`${base}/radar/?api=${encodeURIComponent(api)}${query}`, { waitUntil: 'domcontentloaded' })
+  await page.goto(`${base}/radar/?guide=off&api=${encodeURIComponent(api)}${query}`, { waitUntil: 'domcontentloaded' })
   await page.waitForSelector('[data-ready="true"]', { timeout: 20000 })
   await page.evaluate(async () => { await document.fonts.ready })
   await sleep(250)
