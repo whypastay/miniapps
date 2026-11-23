@@ -30,6 +30,7 @@ export default defineConfig({
         budget: resolve(root, 'budget/index.html'),
         santa: resolve(root, 'santa/index.html'),
         matchday: resolve(root, 'matchday/index.html'),
+        radar: resolve(root, 'radar/index.html'),
       },
     },
   },

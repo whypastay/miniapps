@@ -2,8 +2,8 @@
    Warm paper, one printing ink per bot, gold used only as foil (markers, the active tab, the current week).
    Bots differ by ink, paper tint and one motif; everything else is shared. */
 
-export type ThemeId = 'budget' | 'santa' | 'matchday' | 'paper'
-export type Motif = 'ledger' | 'seal' | 'pitch' | 'plain'
+export type ThemeId = 'budget' | 'santa' | 'matchday' | 'radar' | 'paper'
+export type Motif = 'ledger' | 'seal' | 'pitch' | 'radar' | 'plain'
 
 export interface Theme {
   id: ThemeId
@@ -24,6 +24,8 @@ export const themes: Record<ThemeId, Theme> = {
   budget: { id: 'budget', title: 'Budget Better', motif: 'ledger', mark: 'bb', paper: '#F5F0E6', ink: '#123B2C', ...shared },
   santa: { id: 'santa', title: 'Secret Santa', motif: 'seal', mark: 'pp', paper: '#F6EFE7', ink: '#5B1526', ...shared },
   matchday: { id: 'matchday', title: 'Matchday', motif: 'pitch', mark: 'md', paper: '#F2F0EA', ink: '#14223F', ...shared },
+  // RemotelyHired: deep sea-navy ink on a cool paper; the motif is a hairline radar sweep.
+  radar: { id: 'radar', title: 'RemoteRadar', motif: 'radar', mark: 'rh', paper: '#EEF0EC', ink: '#0F3040', ...shared },
   paper: { id: 'paper', title: 'Ledger', motif: 'plain', mark: 'a', paper: '#EEE8DC', ink: '#1D1A16', gold: '#8A6A35', up: '#2E6B47', down: '#9A3A2E' },
 }
 

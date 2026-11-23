@@ -7,7 +7,7 @@ import { getWebApp, inTelegram } from './telegram.ts'
  * then the last good base in sessionStorage, then ../api.json on Pages (published by the box).
  * Only known tunnel hosts are accepted, so a crafted link cannot point the app elsewhere.
  */
-export type Service = 'santa' | 'matchday' | 'budget'
+export type Service = 'santa' | 'matchday' | 'budget' | 'radar'
 
 export class ApiError extends Error {
   status: number

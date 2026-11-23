@@ -4,7 +4,7 @@ import { applyFormatLocale, cls } from './format.ts'
 import { themeBlock, themes, type ThemeId } from './theme.ts'
 import { bindBackButton, bootTelegram, closeOrLeave, haptic, nativeChromeVisible, telegramFullscreen, telegramProfile } from './telegram.ts'
 
-export type IconName = 'ledger' | 'bars' | 'people' | 'gear' | 'gift' | 'list' | 'grid' | 'cards' | 'split'
+export type IconName = 'ledger' | 'bars' | 'people' | 'gear' | 'gift' | 'list' | 'grid' | 'cards' | 'split' | 'radar' | 'bookmark' | 'shield'
 
 export interface TabItem {
   id: string
@@ -63,6 +63,9 @@ const ICONS: Record<IconName, ComponentChildren> = {
   list: <path d="M5 3h10v14H5zM8 7h4M8 10h4M8 13h2" />,
   grid: <><rect x="3" y="3" width="14" height="14" /><path d="M3 10h14M10 3v14" /></>,
   split: <><path d="M3 5h14M3 15h14M10 5v10" /><circle cx="6" cy="10" r="1.2" /><circle cx="14" cy="10" r="1.2" /></>,
+  radar: <><path d="M10 10 16.5 4.5" /><path d="M3 10a7 7 0 0 1 7-7M5.5 10A4.5 4.5 0 0 1 10 5.5M8 10a2 2 0 0 1 2-2" /><path d="M3 10h14M10 10v7" /><circle cx="14" cy="7" r="0.8" fill="currentColor" /></>,
+  bookmark: <path d="M5 3h10v14l-5-3.6L5 17z" />,
+  shield: <><path d="M10 2.5 16 5v5c0 3.6-2.6 6.3-6 7.5C6.6 16.3 4 13.6 4 10V5z" /><path d="M10 7v4M10 13.2v.6" /></>,
   cards: <><rect x="6" y="3" width="10" height="13" transform="rotate(8 11 9.5)" /><rect x="3" y="4" width="10" height="13" /><path d="M6 9h4M6 12h3" /></>,
 }
 
@@ -298,6 +301,21 @@ export function Pitch() {
       <circle cx="85" cy="75" r="24" />
       <rect x="10" y="45" width="26" height="60" />
       <rect x="134" y="45" width="26" height="60" />
+    </svg>
+  )
+}
+
+/** RemoteRadar motif: a radar sweep in hairline, printed faintly behind the hero, with one gold blip. */
+export function RadarSweep() {
+  return (
+    <svg class="radar-sweep" viewBox="0 0 160 160" preserveAspectRatio="xMaxYMin meet" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
+      <circle cx="160" cy="0" r="150" />
+      <circle cx="160" cy="0" r="110" />
+      <circle cx="160" cy="0" r="70" />
+      <circle cx="160" cy="0" r="30" />
+      <path d="M160 0 L22 92" />
+      <path d="M160 0 L60 140" stroke-dasharray="2 4" />
+      <circle class="blip" cx="74" cy="58" r="3" />
     </svg>
   )
 }
