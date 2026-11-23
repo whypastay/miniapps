@@ -255,7 +255,7 @@ export function BudgetApp(props: { onSplit?: () => void } = {}) {
   }
 
   const guide = (node: ComponentChildren, isReady = ready) => (
-    <GuideScope theme="budget" spec={BUDGET_GUIDE} api={api.current} ready={isReady} onboarded={Boolean(server?.onboarded)}>
+    <GuideScope theme="budget" spec={BUDGET_GUIDE} api={api.current} ready={isReady} onboarded={Boolean(server?.onboarded)} gate={server?.gate}>
       {node}
     </GuideScope>
   )
@@ -662,7 +662,7 @@ function Settings(props: {
 }
 
 interface Reminder { enabled: boolean; weekday: number | null; hour: number | null; minute: number; timezone?: string | null }
-interface ServerInfo { state: unknown; skipped: number[]; reminder: Reminder; currencyRaw: string | null; referrals: number; refLink: string; shareUrl: string; bot: string; onboarded?: boolean }
+interface ServerInfo { state: unknown; skipped: number[]; reminder: Reminder; currencyRaw: string | null; referrals: number; refLink: string; shareUrl: string; bot: string; onboarded?: boolean; gate?: import('../guide.tsx').GateInfo }
 type SyncState = 'local' | 'saving' | 'synced' | 'offline'
 const SYNC_LABEL: Record<SyncState, string> = { local: 'THIS DEVICE', saving: 'SAVING', synced: 'SYNCED WITH THE BOT', offline: 'OFFLINE · WILL RETRY' }
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']

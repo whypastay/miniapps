@@ -1311,3 +1311,65 @@ select { font: inherit; font-family: var(--mono); font-size: 15px; color: var(--
 .gig-steps li { counter-increment: step; padding-left: 26px; }
 .gig-steps li::before { content: counter(step, decimal-leading-zero); width: auto; height: auto; background: none; top: 8px; left: 0; font-family: var(--mono); font-size: 10px; color: var(--gold); }
 .app[data-theme="radar"] .tabbar .tab-label, .app[data-theme="radar"] .tabbar span { white-space: nowrap; }
+
+/* ===== channel subscription gate ===== */
+
+.guide-layer.is-gate { z-index: 36; }
+
+.gate-card {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.gate-avatar-wrap {
+  width: 96px;
+  height: 96px;
+  margin-bottom: 28px;
+  border-radius: 50%;
+  padding: 3px;
+  background: var(--gold);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--gold) 40%, transparent);
+}
+
+.gate-avatar {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--paper);
+}
+
+.guide-title.gate-title {
+  max-width: 16ch;
+  font-size: 34px;
+}
+
+.gate-note {
+  margin: 16px 0 0;
+  max-width: 32ch;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--mute);
+}
+
+.guide-layer.is-gate .guide-nav { gap: 10px; }
+.guide-layer.is-gate .ghost[disabled] { opacity: 0.6; }
+
+/* Matchday+: round recap, set like a newspaper back page */
+.paper-page { padding: 14px 0 16px; border-top: 3px double var(--ink); border-bottom: 1px solid var(--ink); }
+.paper-mast { display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 6px; border-bottom: 1px solid var(--rule);
+  font-family: var(--serif); font-size: 24px; letter-spacing: 0.01em; }
+.paper-mast span:last-child { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--mute); }
+.paper-page .kicker { margin-top: 12px; color: var(--gold); }
+.paper-head { margin: 6px 0 0; font-family: var(--serif); font-weight: 400; font-size: clamp(30px, 9vw, 40px); line-height: 1.02; letter-spacing: -0.01em; }
+.paper-sub { margin: 8px 0 0; font-family: var(--serif); font-style: italic; font-size: 18px; line-height: 1.25; color: var(--ink); }
+.paper-meta { margin: 10px 0 0; font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--mute); }
+.recap-card { display: block; width: 100%; height: auto; margin-top: 8px; border: 1px solid var(--rule); }
+.mono { font-family: var(--mono); font-weight: 500; }
+.live-dot { color: var(--down); font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em; }
+.note.attrib { padding-bottom: 12px; font-size: 11.5px; }

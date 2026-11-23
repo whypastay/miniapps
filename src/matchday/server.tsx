@@ -14,6 +14,7 @@ interface Row { name: string; pts: number; exact: number; rank: number | null; y
 interface League { id: number; name: string; code: string; members: number; owner: boolean; group: boolean; inviteLink: string; shareUrl: string }
 interface State {
   me: { id: number; name: string; tz: string; zoneLabel: string; tzSet: boolean; remind: boolean; results: boolean; referrals: number; refLink: string; shareUrl: string; onboarded?: boolean }
+  gate?: import('../guide.tsx').GateInfo
   scoring: { result: number; exact: number }
   remindHours: number
   global: { rank: number | null; players: number; pts: number; exact: number }
@@ -122,7 +123,7 @@ export function ServerMatchday(props: { api: Api; onOffline?: () => void }) {
     ? 'You were invited to a league. Join below — the short guide is under ? if you want it later.'
     : null
   const guide = (node: ComponentChildren, ready = true) => (
-    <GuideScope theme="matchday" spec={MATCHDAY_GUIDE} api={api} ready={ready && Boolean(st || fatal)} onboarded={Boolean(st?.me.onboarded)} hint={hint}>
+    <GuideScope theme="matchday" spec={MATCHDAY_GUIDE} api={api} ready={ready && Boolean(st || fatal)} onboarded={Boolean(st?.me.onboarded)} hint={hint} gate={st?.gate}>
       {node}
     </GuideScope>
   )

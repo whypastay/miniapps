@@ -195,11 +195,12 @@ export function RadarApp() {
   const gigsMode = view === 'gig' || (view === 'tabs' && tab === 'gigs') || (view === 'setup' && setupFor === 'gigs')
   const guide = (node: ComponentChildren) => gigsMode ? (
     <GuideScope key="gigs" theme="radar" spec={GIGS_GUIDE} api={api} ready={ready} onboarded={Boolean(me?.gigsOnboarded)}
-      hint={hint} doneBody={{ done: true, mode: 'gigs' }}>
+      hint={hint} doneBody={{ done: true, mode: 'gigs' }} gate={me?.gate}
+      publicPage={Boolean(hint)}>
       {node}
     </GuideScope>
   ) : (
-    <GuideScope key="radar" theme="radar" spec={RADAR_GUIDE} api={api} ready={ready} onboarded={Boolean(me?.onboarded)} hint={hint}>
+    <GuideScope key="radar" theme="radar" spec={RADAR_GUIDE} api={api} ready={ready} onboarded={Boolean(me?.onboarded)} hint={hint} gate={me?.gate} publicPage={view === 'shared-check' || Boolean(hint)}>
       {node}
     </GuideScope>
   )

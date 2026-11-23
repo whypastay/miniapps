@@ -1,7 +1,7 @@
 import { createContext } from 'preact'
 import type { ComponentChildren } from 'preact'
 import { useContext, useEffect, useRef, useState } from 'preact/hooks'
-import type { Api } from './api.ts'
+import { openLink, type Api } from './api.ts'
 import { haptic } from './telegram.ts'
 import { themeBlock, themes, type ThemeId } from './theme.ts'
 
@@ -21,6 +21,66 @@ export interface GuideSpec {
   cards: IntroCard[]
   how: string[]
   faq: GuideFaq[]
+}
+
+export interface GateChannel {
+  username: string
+  title: string
+  url: string
+  why: string
+  photo: string
+  handle?: string
+}
+
+export interface GateInfo {
+  required?: boolean
+  preview?: boolean
+  mode?: 'soft' | 'hard' | 'off'
+  channel: GateChannel
+}
+
+const GATE_FALLBACK: Partial<Record<ThemeId, GateChannel>> = {
+  santa: {
+    username: 'partypackhq',
+    title: 'Party Games & Ideas · Party Pack',
+    url: 'https://t.me/partypackhq',
+    why: "Daily party games and holiday ideas for the room you're in.",
+    photo: 'partypackhq.jpg',
+  },
+  matchday: {
+    username: 'matchdayhq',
+    title: 'Football Predictions · Matchday',
+    url: 'https://t.me/matchdayhq',
+    why: "Kick-off times, fixtures and the day's big games.",
+    photo: 'matchdayhq.jpg',
+  },
+  budget: {
+    username: 'budgetbetterhq',
+    title: 'Budgeting & Saving · Budget Better',
+    url: 'https://t.me/budgetbetterhq',
+    why: 'Everyday money habits — calm, practical, and never financial advice.',
+    photo: 'budgetbetterhq.jpg',
+  },
+  radar: {
+    username: 'remotelyhired',
+    title: 'Remote Jobs · RemotelyHired',
+    url: 'https://t.me/remotelyhired',
+    why: 'Remote jobs that are actually open to your country.',
+    photo: 'remotelyhired.jpg',
+  },
+}
+
+function gatePhoto(file: string): string {
+  // Vite base is './', so a leading-relative path would resolve under /santa/ etc.
+  // The files live in public/gate at the site root (sibling of each app folder).
+  return new URL(`../gate/${file}`, new URL('.', location.href)).href
+}
+
+function gateOverride(): 'on' | 'off' | null {
+  const v = new URLSearchParams(location.search).get('gate')
+  if (v === 'off') return 'off'
+  if (v === 'preview' || v === '1' || v === 'on') return 'on'
+  return null
 }
 
 export const SANTA_GUIDE: GuideSpec = {
@@ -244,12 +304,19 @@ export function GuideScope(props: {
   hint?: string | null
   /** Body posted to /me/onboarded when the intro ends; lets one app keep a separate intro per mode. */
   doneBody?: Record<string, unknown>
+  gate?: GateInfo | null
+  /** Public read-only pages (shared wishlist, Split summary, shared job or check) stay open. */
+  publicPage?: boolean
   children: ComponentChildren
 }) {
   const forced = override()
+  const forcedGate = gateOverride()
   const [intro, setIntro] = useState(forced === 'intro')
   const [help, setHelp] = useState(forced === 'help')
   const [hint, setHint] = useState<string | null>(props.hint ?? null)
+  const [gateOn, setGateOn] = useState(forcedGate === 'on')
+  const [gateNote, setGateNote] = useState<string | null>(null)
+  const [gateBusy, setGateBusy] = useState(false)
   const theme = themes[props.theme]
 
   useEffect(() => { setHint(props.hint ?? null) }, [props.hint])
@@ -264,11 +331,54 @@ export function GuideScope(props: {
     if (props.api && !props.onboarded) setIntro(true)
   }, [props.ready, props.onboarded, props.hint, props.api, forced])
 
+  useEffect(() => {
+    if (forcedGate === 'off' || props.publicPage || forced === 'intro') {
+      if (forcedGate !== 'on') setGateOn(false)
+      return
+    }
+    if (forcedGate === 'on') { setGateOn(true); return }
+    if (!props.ready) return
+    if (props.gate?.required) setGateOn(true)
+    else if (props.gate && props.gate.required === false) setGateOn(false)
+  }, [props.ready, props.gate, props.publicPage, forced, forcedGate])
+
   async function finish() {
     setIntro(false)
     haptic('success')
     if (props.api) {
       try { await props.api.post('/me/onboarded', props.doneBody ?? { done: true }) } catch { /* keep the local flag */ }
+    }
+  }
+
+  async function confirmGate() {
+    if (gateBusy) return
+    setGateBusy(true)
+    setGateNote(null)
+    haptic('tap')
+    try {
+      if (forcedGate === 'on' && !props.api) {
+        setGateOn(false)
+        haptic('success')
+        return
+      }
+      if (props.api) {
+        const out = await props.api.post<{ ok?: boolean; required?: boolean; failOpen?: boolean }>('/me/gate/check', {})
+        if (out.ok || out.failOpen || out.required === false) {
+          setGateOn(false)
+          haptic('success')
+          return
+        }
+      } else if (forcedGate === 'on') {
+        setGateOn(false)
+        haptic('success')
+        return
+      }
+      setGateNote('We can’t see the join yet. Open the channel, tap Join, then try again.')
+    } catch {
+      // Fail open: a checker outage must never lock the app.
+      setGateOn(false)
+    } finally {
+      setGateBusy(false)
     }
   }
 
@@ -294,6 +404,16 @@ export function GuideScope(props: {
     <GuideCtx.Provider value={{ onHelp: openHelp, banner }}>
       {props.children}
       {intro ? <Intro theme={theme.id} spec={props.spec} onDone={() => void finish()} /> : null}
+      {!intro && gateOn ? (
+        <GateScreen
+          theme={theme.id}
+          channel={props.gate?.channel ?? GATE_FALLBACK[props.theme] ?? GATE_FALLBACK.santa!}
+          busy={gateBusy}
+          note={gateNote}
+          onJoin={() => openLink((props.gate?.channel ?? GATE_FALLBACK[props.theme] ?? GATE_FALLBACK.santa!).url)}
+          onContinue={() => void confirmGate()}
+        />
+      ) : null}
       {help ? <HelpSheet theme={theme.id} spec={props.spec} onClose={() => setHelp(false)} onReplay={replay} /> : null}
     </GuideCtx.Provider>
   )
@@ -407,6 +527,51 @@ function HelpSheet(props: { theme: ThemeId; spec: GuideSpec; onClose: () => void
         ))}
         <button type="button" class="text-btn help-replay" data-action="help-replay" onClick={props.onReplay}>
           Show the intro again
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function GateScreen(props: {
+  theme: ThemeId
+  channel: GateChannel
+  busy: boolean
+  note: string | null
+  onJoin: () => void
+  onContinue: () => void
+}) {
+  const theme = themes[props.theme]
+  const handle = props.channel.handle ?? ('@' + props.channel.username.replace(/^@/, ''))
+  return (
+    <div class="guide-layer is-gate" data-theme={theme.id} data-gate="1" data-screen="gate">
+      <style>{themeBlock(theme)}</style>
+      <div class="gate-card">
+        <div class="gate-avatar-wrap">
+          <img class="gate-avatar" src={gatePhoto(props.channel.photo)} alt="" width="96" height="96" />
+        </div>
+        <div class="guide-kicker">{handle}</div>
+        <h2 class="guide-title gate-title">{props.channel.title}</h2>
+        <p class="guide-body">{props.channel.why}</p>
+        {props.note ? <p class="gate-note" data-field="gate-note">{props.note}</p> : null}
+      </div>
+      <div class="guide-nav">
+        <button type="button" class="cta" data-action="gate-join" onClick={() => { haptic('tap'); props.onJoin() }}>
+          <span class="cta-label">Join {handle}</span>
+          <span class="cta-side" aria-hidden="true">
+            <svg class="glyph" width="18" height="12" viewBox="0 0 18 12">
+              <path d="M1 6h15M11.5 1.5 16 6l-4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.2" />
+            </svg>
+          </span>
+        </button>
+        <button
+          type="button"
+          class="ghost"
+          data-action="gate-continue"
+          disabled={props.busy}
+          onClick={props.onContinue}
+        >
+          {props.busy ? 'Checking' : "I've joined — continue"}
         </button>
       </div>
     </div>

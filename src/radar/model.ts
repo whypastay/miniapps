@@ -17,7 +17,7 @@ export interface Prefs {
 export interface Me {
   prefs: Prefs; meta: Meta; savedCount: number
   start: { job: string | null; check: string | null; gig?: string | null; tab?: string | null }
-  onboarded?: boolean; gigsOnboarded?: boolean; gigWatch?: boolean
+  onboarded?: boolean; gigsOnboarded?: boolean; gigWatch?: boolean; gate?: import('../guide.tsx').GateInfo
 }
 
 export interface Job {

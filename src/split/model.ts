@@ -12,7 +12,7 @@ export interface Group {
   currencies: CurTable
 }
 export interface GroupSummary { id: number; name: string; currency: string; members: number; totals: Record<string, number>; myBalance: Record<string, number>; updated: number }
-export interface ListResponse { groups: GroupSummary[]; currencies: CurTable; bot: string; onboarded?: boolean }
+export interface ListResponse { groups: GroupSummary[]; currencies: CurTable; bot: string; onboarded?: boolean; gate?: import('../guide.tsx').GateInfo }
 export interface Invite { id: number; name: string; currency: string; member: boolean; people: string[]; placeholders: Array<{ id: number; name: string }> }
 export interface PublicSummary {
   name: string; currency: string; people: Array<{ name: string; balance: Record<string, number> }>; totals: Record<string, number>

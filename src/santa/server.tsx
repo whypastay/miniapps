@@ -48,7 +48,7 @@ interface GameView extends GameSummary {
   message?: string
   delivered?: boolean
 }
-interface Me { id: number; name: string; news: boolean; bot: string; mainApp: boolean; games: GameSummary[]; onboarded?: boolean }
+interface Me { id: number; name: string; news: boolean; bot: string; mainApp: boolean; games: GameSummary[]; onboarded?: boolean; gate?: import('../guide.tsx').GateInfo }
 
 const GAME_TABS = [
   { id: 'game', label: 'Game', icon: 'gift' as const },
@@ -194,7 +194,7 @@ export function ServerSanta(props: { api: Api; onOffline?: () => void }) {
       ? 'This is a public wishlist. Start your own from the button below, or open ? for a short guide.'
       : null
   const guide = (node: ComponentChildren, ready = true) => (
-    <GuideScope theme="santa" spec={SANTA_GUIDE} api={api} ready={ready && Boolean(me || publicList || fatal)} onboarded={Boolean(me?.onboarded)} hint={hint}>
+    <GuideScope theme="santa" spec={SANTA_GUIDE} api={api} ready={ready && Boolean(me || publicList || fatal)} onboarded={Boolean(me?.onboarded)} hint={hint} gate={me?.gate} publicPage={Boolean(publicList)}>
       {node}
     </GuideScope>
   )

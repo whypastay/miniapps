@@ -136,7 +136,7 @@ export function SplitApp(props: { onLedger?: () => void }) {
       ? 'This is a public summary. Start your own from the button below, or open ? for a short guide.'
       : null
   const guide = (node: ComponentChildren) => (
-    <GuideScope theme="budget" spec={BUDGET_GUIDE} api={api} ready={view !== 'loading'} onboarded={Boolean(list?.onboarded)} hint={hint}>
+    <GuideScope theme="budget" spec={BUDGET_GUIDE} api={api} ready={view !== 'loading'} onboarded={Boolean(list?.onboarded)} hint={hint} gate={list?.gate} publicPage={view === 'public'}>
       {node}
     </GuideScope>
   )
