@@ -1,3 +1,5 @@
+import { ensureFresh } from '../fresh.ts'
+ensureFresh()
 import { render } from 'preact'
 import { BudgetApp } from './app.tsx'
 import '../styles.css'

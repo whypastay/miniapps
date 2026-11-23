@@ -105,7 +105,16 @@ export function Shell(props: {
   const hasSettings = props.tabs.some((tab) => tab.id === 'settings')
 
   useEffect(() => {
-    bootTelegram(theme)
+    // telegram-web-app.js loads async (telegram.org can be slow): boot as soon as it is there
+    let booted = false
+    const boot = () => {
+      if (booted || !window.Telegram?.WebApp) return
+      booted = true
+      bootTelegram(theme)
+    }
+    boot()
+    const bootTimer = window.setInterval(() => { boot(); if (booted) window.clearInterval(bootTimer) }, 100)
+    const bootStop = window.setTimeout(() => window.clearInterval(bootTimer), 8000)
     const sync = () => {
       setChrome(chromeMode())
       const profile = telegramProfile()
@@ -114,10 +123,12 @@ export function Shell(props: {
     }
     sync()
     const timer = window.setInterval(sync, 400)
-    const stop = window.setTimeout(() => window.clearInterval(timer), 2400)
+    const stop = window.setTimeout(() => window.clearInterval(timer), 6000)
     return () => {
       window.clearInterval(timer)
       window.clearTimeout(stop)
+      window.clearInterval(bootTimer)
+      window.clearTimeout(bootStop)
     }
   }, [theme])
 

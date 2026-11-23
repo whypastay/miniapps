@@ -35,9 +35,35 @@ export function validBase(raw: string | null | undefined): string | null {
   return null
 }
 
+/** Signed initData: from telegram-web-app.js, or straight from the launch fragment (#tgWebAppData=...). */
 export function initData(): string {
   const tg = getWebApp()
-  return inTelegram() && tg && typeof tg.initData === 'string' ? tg.initData : ''
+  if (tg && typeof tg.initData === 'string' && tg.initData) return tg.initData
+  try {
+    const fromHash = new URLSearchParams(location.hash.slice(1)).get('tgWebAppData')
+    if (fromHash && fromHash.includes('hash=')) return fromHash
+  } catch { /* no fragment */ }
+  try {
+    // telegram-web-app.js keeps the launch params here after it strips the fragment
+    const kept = sessionStorage.getItem('__telegram__initParams')
+    const data = kept ? (JSON.parse(kept) as { tgWebAppData?: string }).tgWebAppData : null
+    if (data && data.includes('hash=')) return data
+  } catch { /* none */ }
+  return ''
+}
+
+/** Wait (briefly) for Telegram to hand over initData: the SDK may still be loading on slow phones. */
+async function waitInitData(ms = 4000): Promise<string> {
+  const end = Date.now() + ms
+  for (;;) {
+    const init = initData()
+    if (init) return init
+    let kept = false
+    try { kept = Boolean(sessionStorage.getItem('__telegram__initParams')) } catch { /* none */ }
+    const inTg = /tgWebApp/.test(location.hash) || kept
+    if (!inTg || Date.now() > end) return ''
+    await new Promise((r) => setTimeout(r, 100))
+  }
 }
 
 /** Telegram start_param (from t.me/bot?startapp=...) or ?start= on the URL. */
@@ -83,8 +109,10 @@ export function discoverBase(): Promise<string | null> {
 
 /** A live session exists when we are inside Telegram (signed initData) and a backend is published. */
 export async function liveSession(): Promise<{ base: string; init: string } | null> {
-  const init = initData()
+  const init = await waitInitData()
   if (!init) return null
+  // give the SDK a moment so BackButton / MainButton / haptics bind on the first screen
+  for (let i = 0; i < 15 && !getWebApp(); i += 1) await new Promise((r) => setTimeout(r, 100))
   const base = await discoverBase()
   return base ? { base, init } : null
 }

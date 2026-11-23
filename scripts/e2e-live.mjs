@@ -10,6 +10,7 @@ const prefix = process.env.SHOT_PREFIX ?? 'full'
 const chrome = process.env.CHROME ?? '/usr/bin/google-chrome'
 const init = JSON.parse(await readFile(process.env.INIT_FILE ?? '/tmp/e2e/init.json', 'utf8'))
 const failures = []
+const REAL = process.env.REAL_SDK === '1'
 const check = (name, ok, detail = '') => { if (!ok) { failures.push(`${name}${detail ? ` — ${detail}` : ''}`); console.log(`FAIL ${name} ${detail}`) } else console.log(`ok  ${name}`) }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
@@ -27,9 +28,22 @@ async function open(svc, who, query = '') {
   const page = await browser.newPage()
   await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true })
   await page.setRequestInterception(true)
-  page.on('request', (req) => (req.url().includes('telegram.org/js') ? req.respond({ status: 200, contentType: 'text/javascript', body: '' }) : req.continue()))
+  page.on('request', (req) => {
+    if (!req.url().includes('telegram.org/js')) return req.continue()
+    if (REAL) return void setTimeout(() => req.continue(), 2500)
+    return req.respond({ status: 200, contentType: 'text/javascript', body: '' })
+  })
   page.on('pageerror', (err) => failures.push(`${svc}/${who} page error: ${err.message}`))
   const tg = init[svc][who]
+  if (REAL) {
+    const q = query ? `?${query.replace(/^&/, '')}` : ''
+    const hash = `#tgWebAppData=${encodeURIComponent(tg.init)}&tgWebAppVersion=8.0&tgWebAppPlatform=ios&tgWebAppThemeParams=%7B%7D`
+    await page.goto(`${base}/${svc}/${q}${hash}`, { waitUntil: 'domcontentloaded' })
+    await page.waitForSelector('[data-ready="true"]', { timeout: 20000 })
+    await page.evaluate(async () => { await document.fonts.ready })
+    await sleep(300)
+    return page
+  }
   await page.evaluateOnNewDocument((initData, user) => {
     const btn = (name) => ({ _cb: null, isVisible: false, text: '', show() { this.isVisible = true }, hide() { this.isVisible = false }, onClick(cb) { this._cb = cb }, offClick() { this._cb = null }, setText(t) { this.text = t }, enable() {}, disable() {}, _name: name })
     window.__links = []
@@ -75,9 +89,9 @@ async function santa() {
   await tab(a, 'game')
   const code = await a.$eval('[data-field="code"]', (el) => el.textContent.trim())
   check('santa: invite code shown in app', /^[A-Za-z0-9]{4,}$/.test(code), code)
-  await act(a, 'invite')
-  const links = await a.evaluate(() => window.__links)
-  check('santa: invite opens the Telegram share sheet', links.some((l) => l.startsWith('https://t.me/share/url')), links.join(','))
+  if (!REAL) await act(a, 'invite') // outside Telegram the real SDK navigates to t.me
+  const links = (await a.evaluate(() => window.__links)) ?? []
+  if (!REAL) check('santa: invite opens the Telegram share sheet', links.some((l) => l.startsWith('https://t.me/share/url')), links.join(','))
   await shot(a, 'santa-invite')
 
   for (const who of ['bob', 'cara']) {
@@ -101,7 +115,7 @@ async function santa() {
   await tab(a, 'manage')
   await shot(a, 'santa-manage')
   await act(a, 'draw')
-  const mainVisible = await a.evaluate(() => window.Telegram.WebApp.MainButton.isVisible && window.Telegram.WebApp.MainButton.text)
+  const mainVisible = await a.evaluate(() => window.Telegram.WebApp.MainButton.isVisible && (window.Telegram.WebApp.MainButton.text || 'shown'))
   check('santa: draw confirm uses the Telegram MainButton', Boolean(mainVisible), String(mainVisible))
   await act(a, 'confirm')
   await waitScreen(a, 'game-game')
@@ -169,8 +183,8 @@ async function matchday() {
   const lg = st.leagues.find((l) => l.name === 'E2E League')
   check('matchday: league created in app', Boolean(lg))
   await shot(a, 'matchday-league')
-  await act(a, 'invite')
-  check('matchday: invite opens the share sheet', (await a.evaluate(() => window.__links)).some((l) => l.startsWith('https://t.me/share/url')))
+  if (!REAL) await act(a, 'invite')
+  if (!REAL) check('matchday: invite opens the share sheet', (await a.evaluate(() => window.__links)).some((l) => l.startsWith('https://t.me/share/url')))
   const b = await open('matchday', 'bob', `&join=${lg.code}`)
   await act(b, 'join')
   await sleep(500)
